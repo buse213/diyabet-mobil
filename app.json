@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "Diyabet Mobil",
+    "slug": "diyabet-mobil",
+    "version": "1.0.0",
+    "plugins": [
+      "expo-sharing"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "3e91236a-9d6e-4c79-ab8a-89fbcdae90af"
+      }
+    }
+  }
+}
