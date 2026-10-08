@@ -10,7 +10,7 @@ export default function KayitEkrani({ navigation }) {
     const [email, setEmail] = useState('');
     const [sifre, setSifre] = useState('');
 
-   const API_URL = 'https://api-gateway-gq75.onrender.com';
+    const API_URL = 'https://api-gateway-gq75.onrender.com';
 
     const handleKayit = async () => {
         if (!ad || !email || !sifre) {
@@ -36,6 +36,7 @@ export default function KayitEkrani({ navigation }) {
                 Alert.alert('Hata', response.data.mesaj);
             }
         } catch (error) {
+            // KULLANICI DOSTU HATA YAKALAMA (Üretim Sürümü İçin)
             const mesaj = error.response?.data?.mesaj || 'Kayıt sırasında sunucuya ulaşılamadı.';
             Alert.alert('Hata', mesaj);
         }
