@@ -6,8 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
-// IP adresi güncellendi
-const BACKEND_URL = 'http://10.203.121.146:3000';
+const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
 
 export default function AnaEkran() {
   const [image, setImage] = useState(null);

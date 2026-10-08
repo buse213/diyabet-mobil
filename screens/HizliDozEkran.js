@@ -5,8 +5,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
-// IP Adresini kendi bilgisayarının IP'si ile eşleştiğinden emin ol
-const BACKEND_URL = 'http://10.203.121.146:3000'; 
+// Render API Gateway Bağlantısı
+const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
 
 export default function HizliDozEkran() {
   const [kanSekeri, setKanSekeri] = useState('');

@@ -9,7 +9,7 @@ export default function GirisEkrani({ navigation }) {
     const [email, setEmail] = useState('');
     const [sifre, setSifre] = useState('');
 
-    const API_URL = 'http://10.203.121.146:3000'; 
+    const API_URL = 'https://api-gateway-gq75.onrender.com';
 
     const handleGiris = async () => {
         if (!email || !sifre) {

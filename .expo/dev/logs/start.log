@@ -2187,3 +2187,10 @@
 {"_e":"metro:bundling:progress","_t":1791361083711,"id":"1","progress":0.999,"total":1202,"current":1202}
 {"_e":"metro:bundling:done","_t":1791361083828,"id":"1","total":1202,"ms":14720.969}
 {"_e":"metro:client_log","_t":1791361156865,"level":"error","data":["[Error: Call to function 'ExpoSharing.shareAsync' has been rejected.\n→ Caused by: Not allowed to read file under given URL.]"]}
+{"_e":"root:init","_t":1791367227086,"format":"v0-jsonl","version":"57.0.27"}
+{"_e":"env:mode","_t":1791367227101,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1791367227116,"mode":"development","files":[],"env":{}}
+{"_e":"devserver:start","_t":1791367231771,"mode":"development","web":true,"baseUrl":"","asyncRoutes":false,"routerRoot":"../..\\..\\app","serverComponents":false,"serverActions":false,"serverRendering":false,"apiRoutes":false,"exporting":false}
+{"_e":"metro:config","_t":1791367236717,"serverRoot":"../..\\..","projectRoot":"../..\\..","exporting":false,"flags":{"autolinkingModuleResolution":false,"serverActions":false,"serverComponents":false,"reactCompiler":false,"optimizeGraph":false,"treeshaking":false,"logbox":false}}
+{"_e":"expo:dev-tools-plugin:load","_t":1791367239089,"plugins":[]}
+{"_e":"metro:instantiate","_t":1791367247635,"atlas":false,"workers":10,"host":"::","port":8081}

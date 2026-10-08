@@ -49,7 +49,7 @@ export default function ProfilEkran({ navigation, route }) {
 
     try {
       // 1. GERÇEK VERİTABANINA GÜNCELLEME İSTEĞİ AT
-      const response = await axios.post('http://10.203.121.146:3000/profil-guncelle', {
+   const response = await axios.post('https://api-gateway-gq75.onrender.com/profil-guncelle', {
           email: email, // E-postayı baz alarak güncelliyor
           ad: adSoyad,
           yas: yas || null,

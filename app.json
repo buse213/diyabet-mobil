@@ -10,6 +10,9 @@
       "eas": {
         "projectId": "3e91236a-9d6e-4c79-ab8a-89fbcdae90af"
       }
+    },
+    "android": {
+      "package": "com.busecam17.diyabetmobil"
     }
   }
 }

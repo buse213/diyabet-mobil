@@ -8,7 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print'; // YENİ: PDF Oluşturucu
 import * as Sharing from 'expo-sharing'; // YENİ: Paylaşım ekranı
 
-const BACKEND_URL = 'http://10.203.121.146:3000'; // IP adresin
+const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
 const screenWidth = Dimensions.get("window").width;
 
 export default function GecmisEkrani() {
