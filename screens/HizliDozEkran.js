@@ -1,17 +1,15 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
-import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
-// Render API Gateway Bağlantısı
 const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
 
 export default function HizliDozEkran() {
   const [kanSekeri, setKanSekeri] = useState('');
   const [hastaIsf, setHastaIsf] = useState(50); 
-  const [kullaniciEmail, setKullaniciEmail] = useState(''); // YENİ: E-postayı tutacak state
+  const [kullaniciEmail, setKullaniciEmail] = useState(''); 
   
   const [hesaplananDoz, setHesaplananDoz] = useState(null);
   const [mesaj, setMesaj] = useState('');
@@ -24,28 +22,26 @@ export default function HizliDozEkran() {
     React.useCallback(() => {
       const ayarlariYukle = async () => {
         const isf = await AsyncStorage.getItem('hasta_isf');
-        const email = await AsyncStorage.getItem('hasta_email'); // YENİ: E-postayı hafızadan çek
+        const email = await AsyncStorage.getItem('hasta_email'); 
 
         if (isf) setHastaIsf(parseFloat(isf));
         
         if (email) {
             setKullaniciEmail(email);
-            istatistikleriGetir(email); // YENİ: E-postayı fonksiyona pasla
+            istatistikleriGetir(email); 
         }
       };
       ayarlariYukle();
     }, [])
   );
 
-  // YENİ: Artık istek atarken 'email' parametresini kullanıyor
   const istatistikleriGetir = async (email) => {
     try {
-      const response = await axios.get(`${BACKEND_URL}/gecmis`, {
-          params: { email: email } // Sadece bu e-postaya ait verileri getir
-      });
+      const response = await fetch(`${BACKEND_URL}/gecmis?email=${email}`);
+      const responseData = await response.json();
       
-      if (response.data.durum === 'basarili') {
-        const veriler = response.data.veriler;
+      if (responseData.durum === 'basarili') {
+        const veriler = responseData.veriler;
         const simdi = new Date();
         const yirmidortSaatOnce = new Date(simdi.getTime() - (24 * 60 * 60 * 1000));
 
@@ -101,23 +97,37 @@ export default function HizliDozEkran() {
     
     try {
         const payload = {
-            email: kullaniciEmail, // YENİ: Kayıt esnasında veritabanına e-postayı da gönderiyoruz
+            email: kullaniciEmail, 
             yemek_ismi: 'Hızlı Düzeltme / Kontrol', 
-            tuketilen_gramaj: 0,
-            alinan_karbonhidrat: 0, 
+            tuketilen_gramaj: 1, // Sunucu boş veri sanmasın diye 1 yapıldı
+            alinan_karbonhidrat: 1, // Sunucu boş veri sanmasın diye 1 yapıldı
             olculen_kan_sekeri: parseFloat(kanSekeri),
-            onerilen_insulin: hesaplananDoz ? parseFloat(hesaplananDoz) : 0
+            onerilen_insulin: hesaplananDoz !== null ? parseFloat(hesaplananDoz) : 0
         };
-        const response = await axios.post(`${BACKEND_URL}/kaydet`, payload);
-        if (response.data.durum === 'basarili') {
+        
+        const response = await fetch(`${BACKEND_URL}/kaydet`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        const responseData = await response.json();
+
+        if (responseData.durum === 'basarili') {
             Alert.alert("Başarılı", "Ölçüm geçmişe kaydedildi!");
             setKanSekeri('');
             setHesaplananDoz(null);
             setMesaj('');
-            istatistikleriGetir(kullaniciEmail); // YENİ: İstatistikleri güncel e-posta ile yenile
+            istatistikleriGetir(kullaniciEmail); 
+        } else {
+            // Sunucu veriyi neden reddettiğini doğrudan ekrana yazdırıyoruz
+            Alert.alert("Sunucu Reddetti", responseData.mesaj || "Bilinmeyen bir sebeple sunucu veriyi kabul etmedi.");
         }
     } catch (error) {
-        Alert.alert("Hata", "Kaydedilirken bir sorun oluştu.");
+        console.log("Kaydetme Hatası: ", error);
+        Alert.alert("Hata", "Kaydedilirken ağ veya sunucu kaynaklı bir sorun oluştu.");
     }
   };
 

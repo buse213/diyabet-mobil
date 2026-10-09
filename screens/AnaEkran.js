@@ -32,7 +32,6 @@ export default function AnaEkran() {
   const [hastaIcr, setHastaIcr] = useState(15);
   const [hastaIsf, setHastaIsf] = useState(50);
   
-  // YENİ: E-postayı tutacak state eklendi
   const [kullaniciEmail, setKullaniciEmail] = useState('');
 
   useFocusEffect(
@@ -40,11 +39,11 @@ export default function AnaEkran() {
       const ayarlariCek = async () => {
         const icr = await AsyncStorage.getItem('hasta_icr');
         const isf = await AsyncStorage.getItem('hasta_isf');
-        const email = await AsyncStorage.getItem('hasta_email'); // YENİ: E-postayı hafızadan çek
+        const email = await AsyncStorage.getItem('hasta_email'); 
 
         if (icr) setHastaIcr(parseFloat(icr));
         if (isf) setHastaIsf(parseFloat(isf));
-        if (email) setKullaniciEmail(email); // YENİ: State'e kaydet
+        if (email) setKullaniciEmail(email); 
       };
       ayarlariCek();
     }, [])
@@ -117,19 +116,41 @@ export default function AnaEkran() {
 
   const uploadImage = async () => {
     if (!image) return Alert.alert('Hata', 'Önce bir fotoğraf seçmelisiniz!');
-    setLoading(true); setStatus('Fotoğraf inceleniyor...'); setAnalizSonucu(null);
+    setLoading(true); 
+    setStatus('Fotoğraf inceleniyor...'); 
+    setAnalizSonucu(null);
+    
+    // YENİ EKLENEN KISIM: Expo'nun dosya yolunu daha güvenli hale getiriyoruz
+    const localUri = image;
+    const filename = localUri.split('/').pop();
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1]}` : `image/jpeg`;
+
     const formData = new FormData();
-    formData.append('file', { uri: image, name: 'food.jpg', type: 'image/jpeg' });
+    formData.append('file', { uri: localUri, name: filename, type });
 
     try {
-      const response = await axios.post(`${BACKEND_URL}/analiz`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-      if (response.data.durum === 'basarili') {
-          setAnalizSonucu(response.data.sonuc);
+      // Axios yerine en saf haliyle fetch kullanıyoruz. HEADER KESİNLİKLE YOK!
+      const response = await fetch(`${BACKEND_URL}/analiz`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'Accept': 'application/json',
+        }
+      });
+      
+      const responseData = await response.json();
+      
+      if (responseData.durum === 'basarili') {
+          setAnalizSonucu(responseData.sonuc);
           setStatus('Analiz Başarılı!');
       } else {
           setStatus('Sonuç alınamadı.');
       }
     } catch (error) {
+      console.log("Hata detayı:", error);
+      // HATANIN GERÇEK SEBEBİNİ EKRANA YAZDIRIYORUZ:
+      Alert.alert('Bağlantı Hatası (Uygulama İçi)', error.message || "Bilinmeyen bir hata oluştu.");
       setStatus('Hata oluştu, sunucuya ulaşılamadı.');
     } finally {
       setLoading(false);
@@ -145,11 +166,11 @@ export default function AnaEkran() {
 
   const gecmiseKaydet = async () => {
     if (!kanSekeri) return Alert.alert("Eksik Bilgi", "Lütfen mevcut kan şekerinizi girin.");
-    if (!kullaniciEmail) return Alert.alert("Hata", "Kullanıcı bilgisi bulunamadı, lütfen tekrar giriş yapın."); // YENİ: E-posta kontrolü
+    if (!kullaniciEmail) return Alert.alert("Hata", "Kullanıcı bilgisi bulunamadı, lütfen tekrar giriş yapın."); 
     
     try {
         const payload = {
-            email: kullaniciEmail, // YENİ: Sunucuya e-postayı da gönderiyoruz!
+            email: kullaniciEmail, 
             yemek_ismi: analizSonucu.turkce_isim, 
             tuketilen_gramaj: parseFloat(gramaj),
             alinan_karbonhidrat: parseFloat(toplamKarbonhidrat), 

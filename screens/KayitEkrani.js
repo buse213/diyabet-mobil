@@ -36,9 +36,8 @@ export default function KayitEkrani({ navigation }) {
                 Alert.alert('Hata', response.data.mesaj);
             }
         } catch (error) {
-            // KULLANICI DOSTU HATA YAKALAMA (Üretim Sürümü İçin)
-            const mesaj = error.response?.data?.mesaj || 'Kayıt sırasında sunucuya ulaşılamadı.';
-            Alert.alert('Hata', mesaj);
+            // GERÇEK HATAYI YAKALAMA (Hata Ayıklama İçin)
+            Alert.alert('Gerçek Hata!', error.message);
         }
     };
 

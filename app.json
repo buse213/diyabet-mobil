@@ -12,7 +12,12 @@
       }
     },
     "android": {
-      "package": "com.busecam17.diyabetmobil"
+      "package": "com.busecam17.diyabetmobil",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
+      "usesCleartextTraffic": true
     }
   }
 }
