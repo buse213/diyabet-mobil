@@ -6,7 +6,62 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
+// --- HİBRİT MİMARİ (EDGE AI) KÜTÜPHANELERİ ---
+import { InferenceSession, Tensor } from 'onnxruntime-react-native';
+import { Asset } from 'expo-asset';
+import NetInfo from '@react-native-community/netinfo';
+
+// --- GÖRSEL ÖN İŞLEME (PRE-PROCESSING) KÜTÜPHANELERİ ---
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as FileSystem from 'expo-file-system';
+import jpeg from 'jpeg-js';
+import { Buffer } from 'buffer';
+
 const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
+
+// --- RESNET-18 İÇİN GÖRSEL ÖN İŞLEME (TENSOR) FONKSİYONU ---
+const prepareImageForModel = async (imageUri) => {
+  try {
+    // 1. Resmi 224x224 boyutuna kırp/yeniden boyutlandır ve JPEG yap
+    const manipResult = await ImageManipulator.manipulateAsync(
+      imageUri,
+      [{ resize: { width: 224, height: 224 } }],
+      { format: ImageManipulator.SaveFormat.JPEG }
+    );
+
+    // 2. Resmi Base64 olarak oku
+    const base64 = await FileSystem.readAsStringAsync(manipResult.uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    // 3. Byte dizisine çevir ve pikselleri çöz
+    const rawImageData = jpeg.decode(Buffer.from(base64, 'base64'), { useTArray: true });
+
+    // 4. PyTorch (ResNet) ImageNet Normalizasyonu
+    const width = 224;
+    const height = 224;
+    const float32Data = new Float32Array(3 * width * height);
+
+    const mean = [0.485, 0.456, 0.406];
+    const std = [0.229, 0.224, 0.225];
+
+    for (let i = 0; i < width * height; i++) {
+      const r = rawImageData.data[i * 4] / 255.0;
+      const g = rawImageData.data[i * 4 + 1] / 255.0;
+      const b = rawImageData.data[i * 4 + 2] / 255.0;
+
+      float32Data[i] = (r - mean[0]) / std[0];                             // R
+      float32Data[i + width * height] = (g - mean[1]) / std[1];            // G
+      float32Data[i + 2 * width * height] = (b - mean[2]) / std[2];        // B
+    }
+
+    // 5. Tensör Objesi Döndür
+    return new Tensor('float32', float32Data, [1, 3, 224, 224]);
+  } catch (error) {
+    console.error("Resim tensöre çevrilirken hata oluştu: ", error);
+    throw error;
+  }
+};
 
 export default function AnaEkran() {
   const [image, setImage] = useState(null);
@@ -114,44 +169,88 @@ export default function AnaEkran() {
     }
   };
 
+  // TAMAMEN ENTEGRE EDİLMİŞ HİBRİT UPLOAD FONKSİYONU
   const uploadImage = async () => {
     if (!image) return Alert.alert('Hata', 'Önce bir fotoğraf seçmelisiniz!');
     setLoading(true); 
-    setStatus('Fotoğraf inceleniyor...'); 
     setAnalizSonucu(null);
     
-    // YENİ EKLENEN KISIM: Expo'nun dosya yolunu daha güvenli hale getiriyoruz
-    const localUri = image;
-    const filename = localUri.split('/').pop();
-    const match = /\.(\w+)$/.exec(filename);
-    const type = match ? `image/${match[1]}` : `image/jpeg`;
-
-    const formData = new FormData();
-    formData.append('file', { uri: localUri, name: filename, type });
-
     try {
-      // Axios yerine en saf haliyle fetch kullanıyoruz. HEADER KESİNLİKLE YOK!
-      const response = await fetch(`${BACKEND_URL}/analiz`, {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'Accept': 'application/json',
-        }
-      });
+      setStatus('1. Aşama: Yerel Yapay Zeka (Edge AI) inceliyor...');
       
-      const responseData = await response.json();
+      // 1. ONNX Modelini Yükle
+      const modelAsset = Asset.fromModule(require('../assets/models/diyabet_modeli_resnet18.onnx'));
+      await modelAsset.downloadAsync();
+      const session = await InferenceSession.create(modelAsset.localUri);
+
+      // 2. Fotoğrafı Modele Hazırla (Tensor)
+      const imageTensor = await prepareImageForModel(image); 
       
-      if (responseData.durum === 'basarili') {
-          setAnalizSonucu(responseData.sonuc);
-          setStatus('Analiz Başarılı!');
+      // 3. Modeli Çalıştır (İnternetsiz Çıkarım)
+      const results = await session.run({ input: imageTensor });
+      
+      // 4. Model Çıktısını İncele
+      const outputData = results.output.data; 
+      const maxScore = Math.max(...outputData);
+      const predictedClass = outputData.indexOf(maxScore);
+
+      console.log(`Yerel AI Tahmini - Sınıf ID: ${predictedClass}, Skor: ${maxScore}`);
+
+      // GÜVEN EŞİĞİ KONTROLÜ (Test için şimdilik 5.0 diyoruz, console log'a bakarak revize edeceğiz)
+      const yerelModelEminMi = maxScore > 5.0; 
+
+      if (yerelModelEminMi) {
+          // YEREL MODEL BİLDİ (Sınıf ID'sine göre JSON haritası eklenecek)
+          setStatus(`Edge AI Başarılı! Sınıf ID: ${predictedClass}`);
+          // Gecici test verisi:
+          // setAnalizSonucu({ turkce_isim: `Yerel Tespit (Sınıf ${predictedClass})`, karbonhidrat_miktari: 15 }); 
+          setLoading(false);
       } else {
-          setStatus('Sonuç alınamadı.');
+          // YEREL MODEL BİLEMEDİ -> BULUTA (GEMİNİ) YÖNLENDİR
+          setStatus('2. Aşama: Edge AI emin olamadı, Cloud (Gemini) devreye giriyor...');
+          
+          // --- İNTERNET KONTROLÜ ---
+          const networkState = await NetInfo.fetch();
+          if (!networkState.isConnected) {
+              Alert.alert(
+                  "Çevrimdışı Mod (Offline)",
+                  "Cihazınızdaki yapay zeka bu yemeği tanımlayamadı. Bulut destekli detaylı analiz için internet bağlantısı gerekiyor. Lütfen insülin hesaplamanızı yapmak için Manuel Besin Girişi'ni kullanın."
+              );
+              setStatus('İnternet yok. Manuel girişe yönlendirildi.');
+              setLoading(false);
+              return; // Ağ yoksa Gemini'ye gitme!
+          }
+          
+          // İnternet varsa Gemini'ye git
+          const filename = image.split('/').pop();
+          const match = /\.(\w+)$/.exec(filename);
+          const type = match ? `image/${match[1]}` : `image/jpeg`;
+
+          const formData = new FormData();
+          formData.append('file', {
+            uri: image,
+            name: filename || 'food.jpg',
+            type: type,
+          });
+
+          const response = await axios.post(`${BACKEND_URL}/analiz`, formData, {
+            headers: {
+              'Accept': 'application/json',
+            },
+          });
+          
+          if (response.data.durum === 'basarili') {
+              setAnalizSonucu(response.data.sonuc);
+              setStatus('Cloud (Gemini) Analizi Başarılı!');
+          } else {
+              setStatus('Sonuç alınamadı.');
+          }
       }
+
     } catch (error) {
       console.log("Hata detayı:", error);
-      // HATANIN GERÇEK SEBEBİNİ EKRANA YAZDIRIYORUZ:
-      Alert.alert('Bağlantı Hatası (Uygulama İçi)', error.message || "Bilinmeyen bir hata oluştu.");
-      setStatus('Hata oluştu, sunucuya ulaşılamadı.');
+      Alert.alert('Bağlantı Hatası', error.message || "Bilinmeyen bir hata oluştu.");
+      setStatus('Hata oluştu, sistem durduruldu.');
     } finally {
       setLoading(false);
     }
