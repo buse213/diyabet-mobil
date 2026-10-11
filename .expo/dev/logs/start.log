@@ -2392,3 +2392,17 @@
 {"_e":"metro:bundling:progress","_t":1791462768018,"id":"1","progress":0.999,"total":1192,"current":1192}
 {"_e":"metro:bundling:progress","_t":1791462768134,"id":"1","progress":0.999,"total":1202,"current":1202}
 {"_e":"metro:bundling:done","_t":1791462768345,"id":"1","total":1202,"ms":7061.2242}
+{"_e":"root:init","_t":1791709824553,"format":"v0-jsonl","version":"57.0.27"}
+{"_e":"env:mode","_t":1791709824554,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1791709824555,"mode":"development","files":[],"env":{}}
+{"_e":"devserver:start","_t":1791709827217,"mode":"development","web":true,"baseUrl":"","asyncRoutes":false,"routerRoot":"../..\\..\\app","serverComponents":false,"serverActions":false,"serverRendering":false,"apiRoutes":false,"exporting":false}
+{"_e":"metro:config","_t":1791709827554,"serverRoot":"../..\\..","projectRoot":"../..\\..","exporting":false,"flags":{"autolinkingModuleResolution":false,"serverActions":false,"serverComponents":false,"reactCompiler":false,"optimizeGraph":false,"treeshaking":false,"logbox":false}}
+{"_e":"expo:dev-tools-plugin:load","_t":1791709828931,"plugins":[]}
+{"_e":"metro:instantiate","_t":1791709837817,"atlas":false,"workers":10,"host":"::","port":8081}
+{"_e":"root:init","_t":1791720134289,"format":"v0-jsonl","version":"57.0.27"}
+{"_e":"env:mode","_t":1791720134290,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1791720134291,"mode":"development","files":[],"env":{}}
+{"_e":"devserver:start","_t":1791720134634,"mode":"development","web":true,"baseUrl":"","asyncRoutes":false,"routerRoot":"../..\\..\\app","serverComponents":false,"serverActions":false,"serverRendering":false,"apiRoutes":false,"exporting":false}
+{"_e":"metro:config","_t":1791720135013,"serverRoot":"../..\\..","projectRoot":"../..\\..","exporting":false,"flags":{"autolinkingModuleResolution":false,"serverActions":false,"serverComponents":false,"reactCompiler":false,"optimizeGraph":false,"treeshaking":false,"logbox":false}}
+{"_e":"expo:dev-tools-plugin:load","_t":1791720135247,"plugins":[]}
+{"_e":"metro:instantiate","_t":1791720141707,"atlas":false,"workers":10,"host":"::","port":8081}

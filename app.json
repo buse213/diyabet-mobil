@@ -12,17 +12,16 @@
             "enableProguardInReleaseBuilds": false,
             "minSdkVersion": 24,
             "packagingOptions": {
-              "pickFirsts": ["**/libc++_shared.so", "**/libfbjni.so"]
-            }
+              "pickFirsts": [
+                "**/libc++_shared.so",
+                "**/libfbjni.so"
+              ]
+            },
+            "enableMinifyInReleaseBuilds": false
           }
         }
       ]
     ],
-    "extra": {
-      "eas": {
-        "projectId": "3e91236a-9d6e-4c79-ab8a-89fbcdae90af"
-      }
-    },
     "android": {
       "package": "com.busecam17.diyabetmobil",
       "permissions": [
@@ -30,6 +29,12 @@
         "ACCESS_NETWORK_STATE"
       ],
       "usesCleartextTraffic": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "2045cbcd-87f0-4def-904c-d0cbc8371493"
+      }
+    },
+    "owner": "busecam"
   }
 }
