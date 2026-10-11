@@ -13,7 +13,7 @@ import ProfilEkran from './screens/ProfilEkran';
 import HizliDozEkran from './screens/HizliDozEkran';
 import GirisEkrani from './screens/GirisEkrani';
 import KayitEkrani from './screens/KayitEkrani';
-
+import 'react-native-gesture-handler';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
