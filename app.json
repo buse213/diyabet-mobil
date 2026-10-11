@@ -4,7 +4,19 @@
     "slug": "diyabet-mobil",
     "version": "1.0.0",
     "plugins": [
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": false,
+            "minSdkVersion": 24,
+            "packagingOptions": {
+              "pickFirsts": ["**/libc++_shared.so", "**/libfbjni.so"]
+            }
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
