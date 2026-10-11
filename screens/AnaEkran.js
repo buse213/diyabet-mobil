@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, Image, ActivityIndicator, TextInput, Alert, ScrollView, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, Image, ActivityIndicator, TextInput, Alert, ScrollView, TouchableOpacity, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -22,22 +22,18 @@ const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
 // --- RESNET-18 İÇİN GÖRSEL ÖN İŞLEME (TENSOR) FONKSİYONU ---
 const prepareImageForModel = async (imageUri) => {
   try {
-    // 1. Resmi 224x224 boyutuna kırp/yeniden boyutlandır ve JPEG yap
     const manipResult = await ImageManipulator.manipulateAsync(
       imageUri,
       [{ resize: { width: 224, height: 224 } }],
       { format: ImageManipulator.SaveFormat.JPEG }
     );
 
-    // 2. Resmi Base64 olarak oku
     const base64 = await FileSystem.readAsStringAsync(manipResult.uri, {
       encoding: FileSystem.EncodingType.Base64,
     });
 
-    // 3. Byte dizisine çevir ve pikselleri çöz
     const rawImageData = jpeg.decode(Buffer.from(base64, 'base64'), { useTArray: true });
 
-    // 4. PyTorch (ResNet) ImageNet Normalizasyonu
     const width = 224;
     const height = 224;
     const float32Data = new Float32Array(3 * width * height);
@@ -50,12 +46,11 @@ const prepareImageForModel = async (imageUri) => {
       const g = rawImageData.data[i * 4 + 1] / 255.0;
       const b = rawImageData.data[i * 4 + 2] / 255.0;
 
-      float32Data[i] = (r - mean[0]) / std[0];                             // R
-      float32Data[i + width * height] = (g - mean[1]) / std[1];            // G
-      float32Data[i + 2 * width * height] = (b - mean[2]) / std[2];        // B
+      float32Data[i] = (r - mean[0]) / std[0];                             
+      float32Data[i + width * height] = (g - mean[1]) / std[1];            
+      float32Data[i + 2 * width * height] = (b - mean[2]) / std[2];        
     }
 
-    // 5. Tensör Objesi Döndür
     return new Tensor('float32', float32Data, [1, 3, 224, 224]);
   } catch (error) {
     console.error("Resim tensöre çevrilirken hata oluştu: ", error);
@@ -88,6 +83,34 @@ export default function AnaEkran() {
   const [hastaIsf, setHastaIsf] = useState(50);
   
   const [kullaniciEmail, setKullaniciEmail] = useState('');
+
+  // --- MODEL YÜKLEME DURUMU (YENİ EKLENDİ) ---
+  const [isModelReady, setIsModelReady] = useState(false);
+  const [modelPath, setModelPath] = useState(null);
+
+  // --- EKRAN AÇILIR AÇILMAZ MODELİ C++ İÇİN GÜVENLE HAZIRLA ---
+  useEffect(() => {
+    const prepareModel = async () => {
+      try {
+        const asset = Asset.fromModule(require('../assets/models/diyabet_modeli_resnet18.onnx'));
+        await asset.downloadAsync();
+        
+        let path = asset.localUri || asset.uri;
+        
+        // KRİTİK NOKTA: Android'in C++ motoru "file://" önekini anlayamadığı için siliyoruz
+        if (Platform.OS === 'android' && path.startsWith('file://')) {
+          path = path.replace('file://', '');
+        }
+        
+        setModelPath(path);
+        setIsModelReady(true);
+        console.log("Model C++ köprüsü için hazır:", path);
+      } catch (error) {
+        console.error("Model hazırlık hatası:", error);
+      }
+    };
+    prepareModel();
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -172,16 +195,16 @@ export default function AnaEkran() {
   // TAMAMEN ENTEGRE EDİLMİŞ HİBRİT UPLOAD FONKSİYONU
   const uploadImage = async () => {
     if (!image) return Alert.alert('Hata', 'Önce bir fotoğraf seçmelisiniz!');
+    if (!isModelReady || !modelPath) return Alert.alert('Lütfen Bekleyin', 'Yapay zeka modeli arka planda hazırlanıyor...');
+    
     setLoading(true); 
     setAnalizSonucu(null);
     
     try {
       setStatus('1. Aşama: Yerel Yapay Zeka (Edge AI) inceliyor...');
       
-      // 1. ONNX Modelini Yükle
-      const modelAsset = Asset.fromModule(require('../assets/models/diyabet_modeli_resnet18.onnx'));
-      await modelAsset.downloadAsync();
-      const session = await InferenceSession.create(modelAsset.localUri);
+      // 1. Önden hazırlanmış ve güvenli hale getirilmiş yol ile oturumu başlat
+      const session = await InferenceSession.create(modelPath);
 
       // 2. Fotoğrafı Modele Hazırla (Tensor)
       const imageTensor = await prepareImageForModel(image); 
@@ -189,27 +212,23 @@ export default function AnaEkran() {
       // 3. Modeli Çalıştır (İnternetsiz Çıkarım)
       const results = await session.run({ input: imageTensor });
       
-      // 4. Model Çıktısını İncele
-      const outputData = results.output.data; 
+      // 4. Model Çıktısını İncele (ONNX çıktısının ismine göre güncellemek gerekebilir)
+      const outputData = results[Object.keys(results)[0]].data; 
       const maxScore = Math.max(...outputData);
       const predictedClass = outputData.indexOf(maxScore);
 
       console.log(`Yerel AI Tahmini - Sınıf ID: ${predictedClass}, Skor: ${maxScore}`);
 
-      // GÜVEN EŞİĞİ KONTROLÜ (Test için şimdilik 5.0 diyoruz, console log'a bakarak revize edeceğiz)
+      // GÜVEN EŞİĞİ KONTROLÜ
       const yerelModelEminMi = maxScore > 5.0; 
 
       if (yerelModelEminMi) {
-          // YEREL MODEL BİLDİ (Sınıf ID'sine göre JSON haritası eklenecek)
           setStatus(`Edge AI Başarılı! Sınıf ID: ${predictedClass}`);
-          // Gecici test verisi:
           // setAnalizSonucu({ turkce_isim: `Yerel Tespit (Sınıf ${predictedClass})`, karbonhidrat_miktari: 15 }); 
           setLoading(false);
       } else {
-          // YEREL MODEL BİLEMEDİ -> BULUTA (GEMİNİ) YÖNLENDİR
           setStatus('2. Aşama: Edge AI emin olamadı, Cloud (Gemini) devreye giriyor...');
           
-          // --- İNTERNET KONTROLÜ ---
           const networkState = await NetInfo.fetch();
           if (!networkState.isConnected) {
               Alert.alert(
@@ -218,10 +237,9 @@ export default function AnaEkran() {
               );
               setStatus('İnternet yok. Manuel girişe yönlendirildi.');
               setLoading(false);
-              return; // Ağ yoksa Gemini'ye gitme!
+              return; 
           }
           
-          // İnternet varsa Gemini'ye git
           const filename = image.split('/').pop();
           const match = /\.(\w+)$/.exec(filename);
           const type = match ? `image/${match[1]}` : `image/jpeg`;
