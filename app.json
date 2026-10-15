@@ -1,46 +1,5 @@
 {
-  "expo": {
-    "name": "Diyabet Mobil",
-    "slug": "diyabet-mobil",
-    "version": "1.0.0",
-    "plugins": [
-      "expo-sharing",
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Yapay zeka besin analizi için kameraya erişim izni gereklidir."
-        }
-      ],
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "enableProguardInReleaseBuilds": false,
-            "minSdkVersion": 24,
-            "packagingOptions": {
-              "pickFirst": [
-                "**/libc++_shared.so",
-                "**/libfbjni.so"
-              ]
-            },
-            "enableMinifyInReleaseBuilds": false
-          }
-        }
-      ]
-    ],
-    "android": {
-      "package": "com.busecam17.diyabetmobil",
-      "permissions": [
-        "INTERNET",
-        "ACCESS_NETWORK_STATE"
-      ],
-      "usesCleartextTraffic": true
-    },
-    "extra": {
-      "eas": {
-        "projectId": "2045cbcd-87f0-4def-904c-d0cbc8371493"
-      }
-    },
-    "owner": "busecam"
+  "android": {
+    "package": "com.busecam.diyabetmobil"
   }
 }

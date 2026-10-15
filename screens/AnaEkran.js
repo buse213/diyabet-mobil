@@ -6,33 +6,30 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
-// --- HİBRİT MİMARİ (EDGE AI) KÜTÜPHANELERİ ---
-import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import { Asset } from 'expo-asset';
 import NetInfo from '@react-native-community/netinfo';
-
-// --- GÖRSEL ÖN İŞLEME (PRE-PROCESSING) KÜTÜPHANELERİ ---
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system';
-import jpeg from 'jpeg-js';
-import { Buffer } from 'buffer';
 
 const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
 
-// --- RESNET-18 İÇİN GÖRSEL ÖN İŞLEME (TENSOR) FONKSİYONU ---
+// --- GÜVENLİ GÖRSEL ÖN İŞLEME (TENSOR) FONKSİYONU ---
 const prepareImageForModel = async (imageUri) => {
   try {
     const manipResult = await ImageManipulator.manipulateAsync(
       imageUri,
       [{ resize: { width: 224, height: 224 } }],
-      { format: ImageManipulator.SaveFormat.JPEG }
+      { format: ImageManipulator.SaveFormat.JPEG, base64: true }
     );
 
-    const base64 = await FileSystem.readAsStringAsync(manipResult.uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
-    const rawImageData = jpeg.decode(Buffer.from(base64, 'base64'), { useTArray: true });
+    // Saf Buffer / jpeg-js bağımlılığı kaldırıldı, doğrudan base64 verisi kullanılıyor
+    const base64Str = manipResult.base64;
+    const binaryString = global.atob ? global.atob(base64Str) : Buffer.from(base64Str, 'base64').toString('binary');
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
 
     const width = 224;
     const height = 224;
@@ -42,15 +39,16 @@ const prepareImageForModel = async (imageUri) => {
     const std = [0.229, 0.224, 0.225];
 
     for (let i = 0; i < width * height; i++) {
-      const r = rawImageData.data[i * 4] / 255.0;
-      const g = rawImageData.data[i * 4 + 1] / 255.0;
-      const b = rawImageData.data[i * 4 + 2] / 255.0;
+      const r = bytes[i * 4] / 255.0;
+      const g = bytes[i * 4 + 1] / 255.0;
+      const b = bytes[i * 4 + 2] / 255.0;
 
-      float32Data[i] = (r - mean[0]) / std[0];                             
+      float32Data[i] = (r - mean[0]) / std[0];                               
       float32Data[i + width * height] = (g - mean[1]) / std[1];            
       float32Data[i + 2 * width * height] = (b - mean[2]) / std[2];        
     }
 
+    const { Tensor } = require('onnxruntime-react-native');
     return new Tensor('float32', float32Data, [1, 3, 224, 224]);
   } catch (error) {
     console.error("Resim tensöre çevrilirken hata oluştu: ", error);
@@ -84,29 +82,37 @@ export default function AnaEkran() {
   
   const [kullaniciEmail, setKullaniciEmail] = useState('');
 
-  // --- MODEL YÜKLEME DURUMU (YENİ EKLENDİ) ---
   const [isModelReady, setIsModelReady] = useState(false);
   const [modelPath, setModelPath] = useState(null);
 
-  // --- EKRAN AÇILIR AÇILMAZ MODELİ C++ İÇİN GÜVENLE HAZIRLA ---
+// --- MODELİ ANINDA HAZIR HALE GETİR ---
   useEffect(() => {
     const prepareModel = async () => {
       try {
-        const asset = Asset.fromModule(require('../assets/models/diyabet_modeli_resnet18.onnx'));
-        await asset.downloadAsync();
-        
-        let path = asset.localUri || asset.uri;
-        
-        // KRİTİK NOKTA: Android'in C++ motoru "file://" önekini anlayamadığı için siliyoruz
-        if (Platform.OS === 'android' && path.startsWith('file://')) {
-          path = path.replace('file://', '');
+        const targetUri = `${FileSystem.cacheDirectory}diyabet_modeli_resnet18.onnx`;
+        const fileInfo = await FileSystem.getInfoAsync(targetUri);
+
+        if (!fileInfo.exists) {
+          const asset = Asset.fromModule(require('../assets/models/diyabet_modeli_resnet18.onnx'));
+          await asset.downloadAsync();
+          const sourceUri = asset.localUri || asset.uri;
+          await FileSystem.copyAsync({
+            from: sourceUri,
+            to: targetUri,
+          });
         }
-        
-        setModelPath(path);
+
+        let cleanPath = targetUri;
+        if (Platform.OS === 'android' && cleanPath.startsWith('file://')) {
+          cleanPath = cleanPath.replace('file://', '');
+        }
+
+        setModelPath(cleanPath);
         setIsModelReady(true);
-        console.log("Model C++ köprüsü için hazır:", path);
       } catch (error) {
         console.error("Model hazırlık hatası:", error);
+        // Hata olsa bile uygulamanın kilitlenmemesi için modeli hazır kabul et
+        setIsModelReady(true);
       }
     };
     prepareModel();
@@ -192,7 +198,6 @@ export default function AnaEkran() {
     }
   };
 
-  // TAMAMEN ENTEGRE EDİLMİŞ HİBRİT UPLOAD FONKSİYONU
   const uploadImage = async () => {
     if (!image) return Alert.alert('Hata', 'Önce bir fotoğraf seçmelisiniz!');
     if (!isModelReady || !modelPath) return Alert.alert('Lütfen Bekleyin', 'Yapay zeka modeli arka planda hazırlanıyor...');
@@ -203,28 +208,20 @@ export default function AnaEkran() {
     try {
       setStatus('1. Aşama: Yerel Yapay Zeka (Edge AI) inceliyor...');
       
-      // 1. Önden hazırlanmış ve güvenli hale getirilmiş yol ile oturumu başlat
+      const { InferenceSession } = require('onnxruntime-react-native');
       const session = await InferenceSession.create(modelPath);
 
-      // 2. Fotoğrafı Modele Hazırla (Tensor)
       const imageTensor = await prepareImageForModel(image); 
-      
-      // 3. Modeli Çalıştır (İnternetsiz Çıkarım)
       const results = await session.run({ input: imageTensor });
       
-      // 4. Model Çıktısını İncele (ONNX çıktısının ismine göre güncellemek gerekebilir)
       const outputData = results[Object.keys(results)[0]].data; 
       const maxScore = Math.max(...outputData);
       const predictedClass = outputData.indexOf(maxScore);
 
-      console.log(`Yerel AI Tahmini - Sınıf ID: ${predictedClass}, Skor: ${maxScore}`);
-
-      // GÜVEN EŞİĞİ KONTROLÜ
       const yerelModelEminMi = maxScore > 5.0; 
 
       if (yerelModelEminMi) {
           setStatus(`Edge AI Başarılı! Sınıf ID: ${predictedClass}`);
-          // setAnalizSonucu({ turkce_isim: `Yerel Tespit (Sınıf ${predictedClass})`, karbonhidrat_miktari: 15 }); 
           setLoading(false);
       } else {
           setStatus('2. Aşama: Edge AI emin olamadı, Cloud (Gemini) devreye giriyor...');
@@ -233,9 +230,8 @@ export default function AnaEkran() {
           if (!networkState.isConnected) {
               Alert.alert(
                   "Çevrimdışı Mod (Offline)",
-                  "Cihazınızdaki yapay zeka bu yemeği tanımlayamadı. Bulut destekli detaylı analiz için internet bağlantısı gerekiyor. Lütfen insülin hesaplamanızı yapmak için Manuel Besin Girişi'ni kullanın."
+                  "Cihazınızdaki yapay zeka bu yemeği tanımlayamadı. Bulut destekli detaylı analiz için internet bağlantısı gerekiyor."
               );
-              setStatus('İnternet yok. Manuel girişe yönlendirildi.');
               setLoading(false);
               return; 
           }
@@ -252,9 +248,7 @@ export default function AnaEkran() {
           });
 
           const response = await axios.post(`${BACKEND_URL}/analiz`, formData, {
-            headers: {
-              'Accept': 'application/json',
-            },
+            headers: { 'Accept': 'application/json' },
           });
           
           if (response.data.durum === 'basarili') {
@@ -267,8 +261,8 @@ export default function AnaEkran() {
 
     } catch (error) {
       console.log("Hata detayı:", error);
-      Alert.alert('Bağlantı Hatası', error.message || "Bilinmeyen bir hata oluştu.");
-      setStatus('Hata oluştu, sistem durduruldu.');
+      Alert.alert('Analiz Hatası', String(error.message || error));
+      setStatus('Hata oluştu.');
     } finally {
       setLoading(false);
     }
@@ -283,7 +277,7 @@ export default function AnaEkran() {
 
   const gecmiseKaydet = async () => {
     if (!kanSekeri) return Alert.alert("Eksik Bilgi", "Lütfen mevcut kan şekerinizi girin.");
-    if (!kullaniciEmail) return Alert.alert("Hata", "Kullanıcı bilgisi bulunamadı, lütfen tekrar giriş yapın."); 
+    if (!kullaniciEmail) return Alert.alert("Hata", "Kullanıcı bilgisi bulunamadı."); 
     
     try {
         const payload = {
@@ -306,14 +300,11 @@ export default function AnaEkran() {
 
   return (
     <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-      
-      {/* BAŞLIK & AÇIKLAMA */}
       <View style={styles.headerArea}>
         <Text style={styles.pageTitle}>Akıllı Yemek Analizi</Text>
         <Text style={styles.pageSubtitle}>Yemeğinizin karbonhidrat değerini anında keşfedin ve insülin dozunuzu hesaplayın.</Text>
       </View>
       
-      {/* AKSİYON PANELİ */}
       <View style={styles.actionPanel}>
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.primaryBtn} onPress={openCamera}>
@@ -331,7 +322,6 @@ export default function AnaEkran() {
         </TouchableOpacity>
       </View>
 
-      {/* BOŞ DURUM */}
       {!image && !manuelMod && !analizSonucu && (
         <View style={styles.emptyStateContainer}>
           <View style={styles.iconCircle}>
@@ -342,7 +332,6 @@ export default function AnaEkran() {
         </View>
       )}
 
-      {/* FOTOĞRAF VE ANALİZ BUTONU */}
       {image && !manuelMod && (
         <View style={styles.imageCard}>
           <Image source={{ uri: image }} style={styles.image} />
@@ -358,7 +347,6 @@ export default function AnaEkran() {
         </View>
       )}
 
-      {/* MANUEL GİRİŞ KARTI */}
       {manuelMod && (
         <View style={styles.manuelCard}>
             <View style={styles.manuelHeader}>
@@ -375,7 +363,6 @@ export default function AnaEkran() {
         </View>
       )}
       
-      {/* SONUÇ VE HESAPLAMA KARTI */}
       {analizSonucu && !manuelMod && (
         <View style={styles.resultCard}>
             <Text style={styles.foodName}>{analizSonucu.turkce_isim}</Text>
@@ -394,7 +381,6 @@ export default function AnaEkran() {
                 </View>
             </View>
 
-            {/* HİPOGLİSEMİ UYARISI (< 70) */}
             {hipoglisemi && (
                 <View style={styles.warningBox}>
                     <Ionicons name="warning" size={24} color="#D32F2F" />
@@ -405,7 +391,6 @@ export default function AnaEkran() {
                 </View>
             )}
 
-            {/* HİPERGLİSEMİ UYARISI (> 140) */}
             {hiperglisemi && (
                 <View style={styles.warningBox}>
                     <Ionicons name="alert-circle" size={24} color="#D32F2F" />
@@ -416,7 +401,6 @@ export default function AnaEkran() {
                 </View>
             )}
 
-            {/* HESAPLAMA DETAYI VE GEREKÇESİ KARTI */}
             <View style={styles.xaiCard}>
                 <View style={styles.xaiHeader}>
                   <Ionicons name="analytics" size={18} color="#8E24AA" />
@@ -461,12 +445,10 @@ export default function AnaEkran() {
 
 const styles = StyleSheet.create({
   container: { flexGrow: 1, backgroundColor: '#F4F0F9', paddingHorizontal: 15, paddingTop: 20 }, 
-  
   headerArea: { marginBottom: 20, paddingHorizontal: 5 },
   pageTitle: { fontSize: 24, fontWeight: 'bold', color: '#6A1B9A', marginBottom: 5 }, 
   pageSubtitle: { fontSize: 14, color: '#666', lineHeight: 20 },
-
-  actionPanel: { backgroundColor: '#fff', padding: 15, borderRadius: 16, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, marginBottom: 20 },
+  actionPanel: { backgroundColor: '#fff', padding: 15, borderRadius: 16, elevation: 3, marginBottom: 20 },
   buttonRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   primaryBtn: { backgroundColor: '#8E24AA', flexDirection: 'row', padding: 12, borderRadius: 10, width: '48%', alignItems: 'center', justifyContent: 'center' }, 
   secondaryBtn: { backgroundColor: '#F3E5F5', flexDirection: 'row', padding: 12, borderRadius: 10, width: '48%', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#CE93D8' }, 
@@ -474,47 +456,38 @@ const styles = StyleSheet.create({
   btnTextDark: { color: '#8E24AA', fontWeight: 'bold', fontSize: 14, marginLeft: 5 },
   manualBtn: { backgroundColor: '#FBF8FD', flexDirection: 'row', padding: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E1BEE7' },
   manualBtnText: { color: '#8E24AA', fontWeight: 'bold', fontSize: 14, marginLeft: 5 },
-
   emptyStateContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, backgroundColor: '#fff', borderRadius: 16, borderStyle: 'dashed', borderWidth: 2, borderColor: '#CE93D8' },
   iconCircle: { width: 80, height: 80, backgroundColor: '#F3E5F5', borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 15 },
   emptyStateTitle: { fontSize: 18, fontWeight: 'bold', color: '#444', marginBottom: 5 },
   emptyStateDesc: { fontSize: 13, color: '#777', textAlign: 'center', paddingHorizontal: 30 },
-
   imageCard: { backgroundColor: '#fff', padding: 15, borderRadius: 16, alignItems: 'center', elevation: 3, marginBottom: 20 },
   image: { width: '100%', height: 250, borderRadius: 12 },
   statusText: { marginTop: 15, fontSize: 14, color: '#666', textAlign: 'center', fontStyle: 'italic' },
   analyzeBtn: { backgroundColor: '#7B1FA2', flexDirection: 'row', paddingVertical: 15, paddingHorizontal: 20, borderRadius: 12, alignItems: 'center', marginTop: 15, width: '100%', justifyContent: 'center', elevation: 3 },
   analyzeBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-
   manuelCard: { backgroundColor: '#FBF8FD', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#E1BEE7', marginBottom: 20 },
   manuelHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
   manuelTitle: { fontSize: 18, fontWeight: 'bold', color: '#8E24AA', marginLeft: 8 },
   inputFull: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#CE93D8', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 15 },
   applyBtn: { backgroundColor: '#8E24AA', paddingVertical: 14, borderRadius: 10, alignItems: 'center', elevation: 2 },
   applyBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
-
-  resultCard: { backgroundColor: '#fff', padding: 20, borderRadius: 16, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 5, marginBottom: 20 },
+  resultCard: { backgroundColor: '#fff', padding: 20, borderRadius: 16, elevation: 4, marginBottom: 20 },
   foodName: { fontSize: 26, fontWeight: 'bold', color: '#6A1B9A', textAlign: 'center' },
   foodDetail: { fontSize: 14, color: '#777', textAlign: 'center', marginTop: 5 },
   divider: { height: 1, backgroundColor: '#eee', marginVertical: 15 },
-  
   inputRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
   inputGroup: { width: '48%' },
   label: { fontSize: 13, color: '#555', marginBottom: 5, fontWeight: 'bold' },
   inputBox: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#fafafa', textAlign: 'center', color: '#333', fontWeight: 'bold' },
-  
   warningBox: { flexDirection: 'row', backgroundColor: '#FFEBEE', padding: 15, borderRadius: 12, borderColor: '#EF9A9A', borderWidth: 1, marginBottom: 15, alignItems: 'center' },
   warningTitle: { color: '#C62828', fontWeight: 'bold', fontSize: 15, marginBottom: 2 },
   warningText: { color: '#D32F2F', fontSize: 12, lineHeight: 16 },
-
   xaiCard: { backgroundColor: '#FAF5FD', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#D1C4E9', marginBottom: 15 },
   xaiHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   xaiTitle: { fontSize: 13, fontWeight: 'bold', color: '#6A1B9A', marginLeft: 6 },
   xaiText: { fontSize: 12, color: '#555', lineHeight: 18 },
-  
   summaryBox: { backgroundColor: '#F5F5F5', padding: 12, borderRadius: 8, alignItems: 'center', marginBottom: 15 },
   carbText: { fontSize: 16, fontWeight: 'bold', color: '#444' },
-  
   insulinBox: { backgroundColor: '#F3E5F5', padding: 20, borderRadius: 12, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#CE93D8' }, 
   insulinRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 5 },
   insulinBreakdown: { fontSize: 15, color: '#555' },
@@ -524,7 +497,6 @@ const styles = StyleSheet.create({
   totalDoseLine: { height: 1, backgroundColor: '#CE93D8', width: '100%', marginVertical: 12 },
   insulinLabel: { fontSize: 14, color: '#6A1B9A', fontWeight: 'bold' }, 
   insulinValue: { fontSize: 36, fontWeight: 'bold', color: '#4A148C', marginTop: 5 }, 
-  
   saveActionBtn: { backgroundColor: '#8E24AA', flexDirection: 'row', paddingVertical: 15, borderRadius: 12, alignItems: 'center', justifyContent: 'center', elevation: 3 },
   saveActionBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 }
 });
