@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, Modal, Dimensions, Alert } from 'react-native';
 import axios from 'axios';
 import { useFocusEffect } from '@react-navigation/native';
 import { LineChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons'; 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Print from 'expo-print'; // YENİ: PDF Oluşturucu
-import * as Sharing from 'expo-sharing'; // YENİ: Paylaşım ekranı
+import * as Print from 'expo-print'; 
+import * as Sharing from 'expo-sharing'; 
+import NetInfo from '@react-native-community/netinfo'; // İNTERNET KONTROLÜ İÇİN EKLENDİ
 
 const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
 const screenWidth = Dimensions.get("window").width;
@@ -15,21 +16,29 @@ export default function GecmisEkrani() {
   const [gecmisVerileri, setGecmisVerileri] = useState([]);
   const [loading, setLoading] = useState(true);
   const [grafikModalGörünür, setGrafikModalGörünür] = useState(false);
-  const [hastaAd, setHastaAd] = useState(''); // Rapora isim yazdırmak için
+  const [hastaAd, setHastaAd] = useState('');
   const [hastaEmail, setHastaEmail] = useState('');
+  const [isOffline, setIsOffline] = useState(false);
+
+  // İnternet durumunu dinle
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsOffline(!state.isConnected);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
-      verileriGetir();
-    }, [])
+      senkronizeEtVeGetir();
+    }, [isOffline]) // İnternet durumu değiştiğinde de tetiklense iyi olur
   );
 
-  const verileriGetir = async () => {
+  const senkronizeEtVeGetir = async () => {
     setLoading(true);
     try {
       const email = await AsyncStorage.getItem('hasta_email');
-      const ad = await AsyncStorage.getItem('hasta_ad'); // Raporda göstermek için adı da çekiyoruz
-
+      const ad = await AsyncStorage.getItem('hasta_ad');
       if (ad) setHastaAd(ad);
       
       if (!email) {
@@ -37,47 +46,63 @@ export default function GecmisEkrani() {
           setLoading(false);
           return;
       }
-      
       setHastaEmail(email);
 
-      const response = await axios.get(`${BACKEND_URL}/gecmis`, { 
-          params: { email: email } 
-      });
+      // 1. Önce telefonun hafızasında bekleyen offline veri var mı bak
+      const offlineVeriString = await AsyncStorage.getItem('offline_kayitlar');
+      let offlineVeriler = offlineVeriString ? JSON.parse(offlineVeriString) : [];
 
-      if (response.data.durum === 'basarili') {
-        setGecmisVerileri(response.data.veriler);
+      if (isOffline) {
+        // İNTERNET YOKSA: Sadece telefonun hafızasındaki verileri göster
+        setGecmisVerileri(offlineVeriler.reverse()); // En son eklenen en üstte görünsün
+      } else {
+        // İNTERNET VARSA: Yerelde bekleyen verileri sunucuya senkronize et
+        if (offlineVeriler.length > 0) {
+            for (const kayit of offlineVeriler) {
+                try {
+                    await axios.post(`${BACKEND_URL}/kaydet`, kayit);
+                } catch (err) {
+                    console.error("Offline kayıt senkronize edilemedi:", err);
+                }
+            }
+            // Eşitleme bitince yerel belleği temizle
+            await AsyncStorage.removeItem('offline_kayitlar');
+        }
+
+        // 2. Ardından sunucudaki güncel ve tam listeyi çek
+        const response = await axios.get(`${BACKEND_URL}/gecmis`, { 
+            params: { email: email } 
+        });
+
+        if (response.data.durum === 'basarili') {
+          setGecmisVerileri(response.data.veriler);
+        }
       }
     } catch (error) {
-      console.error("Geçmiş verileri çekilemedi", error);
+      console.error("Geçmiş verileri çekilemedi veya senkronize edilemedi", error);
     } finally {
       setLoading(false);
     }
   };
 
   const tarihFormatla = (tarihString) => {
+    if(!tarihString) return "Tarih Yok";
     const tarih = new Date(tarihString);
     return `${tarih.getDate()}/${tarih.getMonth() + 1}/${tarih.getFullYear()} ${tarih.getHours()}:${tarih.getMinutes() < 10 ? '0' : ''}${tarih.getMinutes()}`;
   };
 
-  // ==========================================
-  // DOKTOR RAPORU OLUŞTURMA (PDF)
-  // ==========================================
   const raporIndir = async () => {
     if (gecmisVerileri.length === 0) {
       return Alert.alert("Hata", "Rapor oluşturulacak geçmiş kaydı bulunmuyor.");
     }
-
     try {
       const bugun = new Date().toLocaleDateString('tr-TR');
-      
-      // Tablo satırlarını dinamik olarak oluştur
       let tabloSatirlari = '';
       gecmisVerileri.forEach(kayit => {
-          // Kan şekeri rengini ayarla (Yüksekse kırmızı, düşükse mavi, normalse yeşil)
           let renk = '#333';
-          if (kayit.olculen_kan_sekeri > 140) renk = '#D32F2F'; // Kırmızı (Hiperglisemi)
-          else if (kayit.olculen_kan_sekeri < 70 && kayit.olculen_kan_sekeri > 0) renk = '#1976D2'; // Mavi (Hipoglisemi)
-          else if (kayit.olculen_kan_sekeri > 0) renk = '#388E3C'; // Yeşil (Normal)
+          if (kayit.olculen_kan_sekeri > 140) renk = '#D32F2F'; 
+          else if (kayit.olculen_kan_sekeri < 70 && kayit.olculen_kan_sekeri > 0) renk = '#1976D2'; 
+          else if (kayit.olculen_kan_sekeri > 0) renk = '#388E3C'; 
 
           tabloSatirlari += `
             <tr>
@@ -90,7 +115,6 @@ export default function GecmisEkrani() {
           `;
       });
 
-      // PDF'in Profesyonel HTML Tasarımı
       const htmlIcerik = `
         <html>
           <head>
@@ -138,21 +162,17 @@ export default function GecmisEkrani() {
         </html>
       `;
 
-      // HTML'den PDF dosyası oluştur
       const { uri } = await Print.printToFileAsync({
         html: htmlIcerik,
         base64: false
       });
 
-      // Telefonun yerel paylaşım (WhatsApp, E-posta, Dosyalar vb.) menüsünü aç
       await Sharing.shareAsync(uri, {
         mimeType: 'application/pdf',
         dialogTitle: 'Doktor Raporunu Paylaş',
         UTI: 'com.adobe.pdf'
       });
-
     } catch (error) {
-      console.error(error);
       Alert.alert("Hata", "Rapor oluşturulurken bir sorun meydana geldi.");
     }
   };
@@ -162,10 +182,11 @@ export default function GecmisEkrani() {
     const sonVeriler = gecmisVerileri.slice(0, 7).reverse();
     
     const etiketler = sonVeriler.map(veri => {
+        if(!veri.tarih) return "";
         const t = new Date(veri.tarih);
         return `${t.getHours()}:${t.getMinutes() < 10 ? '0' : ''}${t.getMinutes()}`;
     });
-    const veriler = sonVeriler.map(veri => veri.olculen_kan_sekeri);
+    const veriler = sonVeriler.map(veri => veri.olculen_kan_sekeri || 0);
 
     return { etiketler, veriler };
   };
@@ -193,8 +214,12 @@ export default function GecmisEkrani() {
 
   return (
     <View style={styles.container}>
-      
-      {/* BUTONLAR YANYANA EKLENDİ */}
+      {isOffline && (
+        <View style={{backgroundColor: '#FFEBEE', padding: 10, borderRadius: 8, marginBottom: 10}}>
+          <Text style={{color: '#D32F2F', textAlign: 'center', fontWeight: 'bold'}}>Şu an çevrimdışısınız. Yalnızca yerel kayıtlar gösteriliyor.</Text>
+        </View>
+      )}
+
       <View style={styles.buttonRow}>
         <TouchableOpacity style={styles.chartButton} onPress={() => setGrafikModalGörünür(true)}>
           <Ionicons name="stats-chart" size={18} color="#8E24AA" />
@@ -245,12 +270,7 @@ export default function GecmisEkrani() {
                 propsForDots: { r: "5", strokeWidth: "2", stroke: "#6A1B9A" } 
               }}
               bezier
-              style={{ 
-                marginVertical: 8, 
-                borderRadius: 16,
-                paddingRight: 40,
-                paddingLeft: 15
-              }}
+              style={{ marginVertical: 8, borderRadius: 16, paddingRight: 40, paddingLeft: 15 }}
             />
           </View>
 
@@ -260,22 +280,17 @@ export default function GecmisEkrani() {
           </TouchableOpacity>
         </View>
       </Modal>
-
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F0F9', paddingHorizontal: 15, paddingTop: 10 }, 
-  
-  // YENİ BUTON TASARIMLARI (Yanyana yerleşmesi için)
   buttonRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
   chartButton: { flex: 1, backgroundColor: '#F3E5F5', flexDirection: 'row', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#CE93D8', alignItems: 'center', justifyContent: 'center', elevation: 2, marginRight: 8 },
   chartButtonText: { color: '#8E24AA', fontWeight: 'bold', fontSize: 14, marginLeft: 6 }, 
-  
   reportButton: { flex: 1, backgroundColor: '#8E24AA', flexDirection: 'row', padding: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center', elevation: 3, marginLeft: 8 },
   reportButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 14, marginLeft: 6 },
-
   emptyText: { textAlign: 'center', marginTop: 50, fontSize: 16, color: '#888' },
   card: { backgroundColor: '#fff', padding: 15, borderRadius: 16, marginBottom: 15, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, borderWidth: 1, borderColor: '#E1BEE7' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
