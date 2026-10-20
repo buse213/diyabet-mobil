@@ -15,6 +15,9 @@ import HizliDozEkran from './screens/HizliDozEkran';
 import GirisEkrani from './screens/GirisEkrani';
 import KayitEkrani from './screens/KayitEkrani';
 
+// YENİ EKLENEN SAYFAMIZ
+import SikTuketilenler from './screens/SikTuketilenler';
+
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
@@ -80,6 +83,19 @@ export default function App() {
         <Stack.Screen name="Kayit" component={KayitEkrani} />
         <Stack.Screen name="MainTabs" component={MainTabs} />
         <Stack.Screen name="Profil" component={ProfilEkran} />
+        
+        {/* YENİ EKLENEN SAYFAMIZIN NAVİGASYON KAYDI */}
+        <Stack.Screen 
+          name="SikTuketilenler" 
+          component={SikTuketilenler} 
+          options={{ 
+            headerShown: true, 
+            title: 'Sık Tükettiklerim',
+            headerTintColor: '#8E24AA', // Geri tuşu mor olsun
+            headerTitleStyle: { fontWeight: 'bold' }
+          }} 
+        />
+        
       </Stack.Navigator>
     </NavigationContainer>
   );

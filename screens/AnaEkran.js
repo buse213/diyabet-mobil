@@ -27,7 +27,7 @@ const YEREL_MODEL_SINIFLARI = [
   { ai_etiketi: 'waffles', turkce_isim: 'Waffle', karbonhidrat_miktari: 33 }
 ];
 
-export default function AnaEkran() {
+export default function AnaEkran({ navigation }) {
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
@@ -164,7 +164,6 @@ export default function AnaEkran() {
       if (response.data.durum === 'basarili' && response.data.sonuc) {
         const { turkce_isim, karbonhidrat_miktari } = response.data.sonuc;
         
-        // Kullanıcıya teknik terim göstermeden doğal bir dille sonucu iletiyoruz
         setStatus(`Analiz Tamamlandı!\nBulunan Yemek: ${turkce_isim}`);
         setAnalizSonucu({
           turkce_isim: turkce_isim,
@@ -248,6 +247,13 @@ export default function AnaEkran() {
           <Ionicons name="create-outline" size={20} color="#8E24AA" />
           <Text style={styles.manualBtnText}>Besin Değerini Manuel Gir</Text>
         </TouchableOpacity>
+        
+        {/* YENİ EKLENEN BUTON */}
+        <TouchableOpacity style={styles.favoritesBtn} onPress={() => navigation.navigate('SikTuketilenler')}>
+          <Ionicons name="heart" size={20} color="#fff" />
+          <Text style={styles.favoritesBtnText}>Sık Tükettiklerim</Text>
+        </TouchableOpacity>
+
       </View>
 
       {!image && !manuelMod && !analizSonucu && (
@@ -369,6 +375,12 @@ const styles = StyleSheet.create({
   btnTextDark: { color: '#8E24AA', fontWeight: 'bold', fontSize: 14, marginLeft: 5 },
   manualBtn: { backgroundColor: '#FBF8FD', flexDirection: 'row', padding: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E1BEE7' },
   manualBtnText: { color: '#8E24AA', fontWeight: 'bold', fontSize: 14, marginLeft: 5 },
+  
+  /* YENİ BUTON TASARIMI */
+  favoritesBtn: { backgroundColor: '#8E24AA', flexDirection: 'row', padding: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginTop: 10, elevation: 2 },
+  favoritesBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14, marginLeft: 8 },
+  /* ------------------- */
+
   emptyStateContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, backgroundColor: '#fff', borderRadius: 16, borderStyle: 'dashed', borderWidth: 2, borderColor: '#CE93D8' },
   iconCircle: { width: 80, height: 80, backgroundColor: '#F3E5F5', borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 15 },
   emptyStateTitle: { fontSize: 18, fontWeight: 'bold', color: '#444', marginBottom: 5 },

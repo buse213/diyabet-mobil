@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 
 const SikTuketilenler = ({ navigation }) => {
   const [yemekler, setYemekler] = useState([]);
@@ -9,8 +10,7 @@ const SikTuketilenler = ({ navigation }) => {
   useEffect(() => {
     const verileriGetir = async () => {
       try {
-      // Yeni hali:
-const email = await AsyncStorage.getItem('hasta_email');
+        const email = await AsyncStorage.getItem('hasta_email');
         
         if (!email) {
           console.error("Kullanıcı e-postası bulunamadı!");
@@ -18,7 +18,6 @@ const email = await AsyncStorage.getItem('hasta_email');
           return;
         }
 
-        // Kendi Render API Gateway adresin ve dinamik email parametresi
         const apiLink = `https://api-gateway-gq75.onrender.com/api/sik-tuketilenler?email=${email}`;
         
         const res = await fetch(apiLink);
@@ -38,31 +37,36 @@ const email = await AsyncStorage.getItem('hasta_email');
 
   const renderYemekKarti = ({ item }) => (
     <TouchableOpacity 
-        style={styles.kart}
+        style={styles.card}
         onPress={() => console.log(`${item.turkce_isim} seçildi`)}
     >
-      <View style={styles.kartIcerik}>
-        <Text style={styles.yemekIsmi}>{item.turkce_isim}</Text>
-        <Text style={styles.karbonhidrat}>{item.karbonhidrat_miktari}g Karb</Text>
+      <View style={styles.cardContent}>
+        <View style={styles.iconContainer}>
+          <Ionicons name="restaurant-outline" size={24} color="#8E24AA" />
+        </View>
+        <Text style={styles.foodName}>{item.turkce_isim}</Text>
       </View>
-      <View style={styles.rozet}>
-        <Text style={styles.rozetMetin}>{item.tuketim_sayisi} Kez</Text>
+      <View style={styles.badge}>
+        <Text style={styles.badgeText}>{item.tuketim_sayisi} Kez</Text>
       </View>
     </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
-      <Text style={styles.baslik}>En Çok Tükettiklerin</Text>
+      <Text style={styles.pageTitle}>En Çok Tükettiklerin</Text>
       
       {yukleniyor ? (
-        <ActivityIndicator size="large" color="#4CAF50" />
+        <ActivityIndicator size="large" color="#8E24AA" style={{ marginTop: 50 }} />
+      ) : yemekler.length === 0 ? (
+        <Text style={styles.emptyText}>Henüz sık tüketilen bir yemek bulunmuyor.</Text>
       ) : (
         <FlatList
           data={yemekler}
           keyExtractor={(item, index) => index.toString()}
           renderItem={renderYemekKarti}
           contentContainerStyle={{ paddingBottom: 20 }}
+          showsVerticalScrollIndicator={false}
         />
       )}
     </View>
@@ -72,20 +76,22 @@ const email = await AsyncStorage.getItem('hasta_email');
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F7FA',
-    padding: 20,
+    backgroundColor: '#F4F0F9', // Diğer sayfalardaki ortak arkaplan
+    paddingHorizontal: 15,
+    paddingTop: 10,
   },
-  baslik: {
-    fontSize: 24,
+  pageTitle: {
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#6A1B9A', // Ortak koyu mor başlık rengi
     marginBottom: 20,
-    marginTop: 40,
+    marginTop: 20,
+    marginLeft: 5,
   },
-  kart: {
-    backgroundColor: '#FFF',
-    padding: 20,
-    borderRadius: 15,
+  card: {
+    backgroundColor: '#fff',
+    padding: 15,
+    borderRadius: 16, // Ortak köşeli hatlar
     marginBottom: 15,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -93,32 +99,46 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 5,
+    shadowRadius: 4,
     elevation: 3,
+    borderWidth: 1,
+    borderColor: '#E1BEE7', // İnce açık mor çerçeve
   },
-  kartIcerik: {
+  cardContent: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  yemekIsmi: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2C3E50',
-    marginBottom: 5,
+  iconContainer: {
+    backgroundColor: '#F3E5F5',
+    padding: 10,
+    borderRadius: 12,
+    marginRight: 15,
   },
-  karbonhidrat: {
-    fontSize: 15,
-    color: '#7F8C8D',
-  },
-  rozet: {
-    backgroundColor: '#E8F5E9',
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-  },
-  rozetMetin: {
-    color: '#4CAF50',
+  foodName: {
+    fontSize: 17,
     fontWeight: 'bold',
-    fontSize: 12,
+    color: '#2C3E50',
+    flexShrink: 1, // Uzun isimlerin taşmasını engeller
+  },
+  badge: {
+    backgroundColor: '#F3E5F5', // Ortak açık mor arkaplan
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#CE93D8',
+  },
+  badgeText: {
+    color: '#8E24AA', // Ortak vurgu moru
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  emptyText: {
+    textAlign: 'center',
+    marginTop: 50,
+    fontSize: 16,
+    color: '#888',
   }
 });
 
