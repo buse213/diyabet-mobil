@@ -9,6 +9,7 @@ const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
 export default function HizliDozEkran() {
   const [kanSekeri, setKanSekeri] = useState('');
   const [hastaIsf, setHastaIsf] = useState(50); 
+  const [hastaIcr, setHastaIcr] = useState(15); 
   const [kullaniciEmail, setKullaniciEmail] = useState(''); 
   
   const [hesaplananDoz, setHesaplananDoz] = useState(null);
@@ -22,9 +23,11 @@ export default function HizliDozEkran() {
     React.useCallback(() => {
       const ayarlariYukle = async () => {
         const isf = await AsyncStorage.getItem('hasta_isf');
+        const icr = await AsyncStorage.getItem('hasta_icr'); 
         const email = await AsyncStorage.getItem('hasta_email'); 
 
         if (isf) setHastaIsf(parseFloat(isf));
+        if (icr) setHastaIcr(parseFloat(icr)); 
         
         if (email) {
             setKullaniciEmail(email);
@@ -78,7 +81,20 @@ export default function HizliDozEkran() {
     if (seker < 70) {
       setDurum('hipo');
       setHesaplananDoz(0);
-      setMesaj('⚠️ HİPOGLİSEMİ: İnsülin YASAK! Acilen 15g hızlı karbonhidrat alın (örn: meyve suyu) ve 15 dk sonra tekrar ölçün.');
+      
+      // Hedef şekeri 120 olarak alıyoruz.
+      const hedefSekerFarki = 120 - seker;
+      const birGramKarbEtkisi = hastaIsf / hastaIcr;
+      const gerekenKarb = hedefSekerFarki / birGramKarbEtkisi;
+      const yuvarlanmisKarb = Math.max(1, Math.round(gerekenKarb)); 
+      
+      // Alternatif Besin Hesaplamaları
+      const kupSeker = Math.round(yuvarlanmisKarb / 3); 
+      const meyveSuyuMl = Math.round(yuvarlanmisKarb * 10); 
+      const bal = Math.round(yuvarlanmisKarb / 5); 
+      
+      setMesaj(`⚠️ HİPOGLİSEMİ: İnsülin YASAK!\n\nKan şekerinizi güvenli seviyeye (120) çıkarmak için acilen ${yuvarlanmisKarb}g hızlı karbonhidrat almalısınız.\n\nHızlı Etki İçin Şunlardan BİRİNİ Tüketin:\n🧊 ${kupSeker} adet küp şeker\n🧃 ${meyveSuyuMl} ml meyve suyu (yaklaşık ${Math.max(0.5, Math.round((meyveSuyuMl/200)*10)/10)} su bardağı)\n🍯 ${bal} tatlı kaşığı bal veya reçel\n\nLütfen 15 dk sonra tekrar ölçüm yapın.`);
+
     } else if (seker <= 120) {
       setDurum('normal');
       setHesaplananDoz(0);
@@ -99,8 +115,8 @@ export default function HizliDozEkran() {
         const payload = {
             email: kullaniciEmail, 
             yemek_ismi: 'Hızlı Düzeltme / Kontrol', 
-            tuketilen_gramaj: 1, // Sunucu boş veri sanmasın diye 1 yapıldı
-            alinan_karbonhidrat: 1, // Sunucu boş veri sanmasın diye 1 yapıldı
+            tuketilen_gramaj: 1, 
+            alinan_karbonhidrat: 1, 
             olculen_kan_sekeri: parseFloat(kanSekeri),
             onerilen_insulin: hesaplananDoz !== null ? parseFloat(hesaplananDoz) : 0
         };
@@ -122,7 +138,6 @@ export default function HizliDozEkran() {
             setMesaj('');
             istatistikleriGetir(kullaniciEmail); 
         } else {
-            // Sunucu veriyi neden reddettiğini doğrudan ekrana yazdırıyoruz
             Alert.alert("Sunucu Reddetti", responseData.mesaj || "Bilinmeyen bir sebeple sunucu veriyi kabul etmedi.");
         }
     } catch (error) {
@@ -229,7 +244,7 @@ const styles = StyleSheet.create({
   resultLabel: { fontSize: 16, color: '#6A1B9A', fontWeight: 'bold', marginBottom: 5 },
   resultValue: { fontSize: 40, fontWeight: 'bold', color: '#4A148C', marginBottom: 15 },
   resultMessage: { fontSize: 14, color: '#555', textAlign: 'center', marginBottom: 20, fontWeight: '500' },
-  hipoMessage: { fontSize: 15, color: '#C62828', textAlign: 'center', fontWeight: 'bold', marginBottom: 20 },
+  hipoMessage: { fontSize: 15, color: '#C62828', textAlign: 'left', fontWeight: 'bold', marginBottom: 20 },
   
   saveBtnNormal: { backgroundColor: '#8E24AA', flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 40, borderRadius: 10, alignItems: 'center', elevation: 2 },
   saveBtnHipo: { backgroundColor: '#D32F2F', flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 40, borderRadius: 10, alignItems: 'center', elevation: 2 },
