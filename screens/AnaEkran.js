@@ -8,24 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
 
 const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
-
-const YEREL_MODEL_SINIFLARI = [
-  { ai_etiketi: 'caesar_salad', turkce_isim: 'Sezar Salata', karbonhidrat_miktari: 4 },
-  { ai_etiketi: 'chicken_curry', turkce_isim: 'Köri Soslu Tavuk', karbonhidrat_miktari: 6 },
-  { ai_etiketi: 'chicken_wings', turkce_isim: 'Tavuk Kanat', karbonhidrat_miktari: 5 },
-  { ai_etiketi: 'french_fries', turkce_isim: 'Patates Kızartması', karbonhidrat_miktari: 41 },
-  { ai_etiketi: 'fried_rice', turkce_isim: 'Kızarmış Pirinç', karbonhidrat_miktari: 28 },
-  { ai_etiketi: 'hamburger', turkce_isim: 'Hamburger', karbonhidrat_miktari: 24 },
-  { ai_etiketi: 'hot_dog', turkce_isim: 'Sosisli Sandviç', karbonhidrat_miktari: 18 },
-  { ai_etiketi: 'ice_cream', turkce_isim: 'Dondurma', karbonhidrat_miktari: 24 },
-  { ai_etiketi: 'macaroni_and_cheese', turkce_isim: 'Mac and Cheese', karbonhidrat_miktari: 23 },
-  { ai_etiketi: 'omelette', turkce_isim: 'Omlet', karbonhidrat_miktari: 1 },
-  { ai_etiketi: 'pancakes', turkce_isim: 'Pancake', karbonhidrat_miktari: 28 },
-  { ai_etiketi: 'pizza', turkce_isim: 'Pizza', karbonhidrat_miktari: 33 },
-  { ai_etiketi: 'spaghetti_bolognese', turkce_isim: 'Spagetti Bolonez', karbonhidrat_miktari: 14 },
-  { ai_etiketi: 'steak', turkce_isim: 'Biftek', karbonhidrat_miktari: 0 },
-  { ai_etiketi: 'waffles', turkce_isim: 'Waffle', karbonhidrat_miktari: 33 }
-];
+const AI_MODEL_URL = 'https://reporting-service-vsbz.onrender.com/insulin-tahmini'; 
 
 export default function AnaEkran({ navigation }) {
   const [image, setImage] = useState(null);
@@ -54,6 +37,10 @@ export default function AnaEkran({ navigation }) {
 
   const [isOffline, setIsOffline] = useState(false);
 
+  const [aiYukleniyor, setAiYukleniyor] = useState(false);
+  const [gelecekSeker, setGelecekSeker] = useState(null);
+  const [yapayZekaKullanildi, setYapayZekaKullanildi] = useState(false);
+
   useFocusEffect(
     React.useCallback(() => {
       const ayarlariCek = async () => {
@@ -77,6 +64,9 @@ export default function AnaEkran({ navigation }) {
 
   useEffect(() => {
     if (analizSonucu && gramaj) {
+      setYapayZekaKullanildi(false); 
+      setGelecekSeker(null);
+
       const bazKarb = parseFloat(analizSonucu.karbonhidrat_miktari);
       const girilenGram = parseFloat(gramaj);
       const sekerDegeri = parseFloat(kanSekeri);
@@ -103,6 +93,40 @@ export default function AnaEkran({ navigation }) {
       }
     }
   }, [gramaj, analizSonucu, kanSekeri, hastaIcr, hastaIsf]);
+
+  const lstmTahminiAl = async () => {
+    if (!kanSekeri || !toplamKarbonhidrat) {
+      Alert.alert("Eksik Bilgi", "Lütfen önce tüketim miktarını ve anlık kan şekerinizi girin.");
+      return;
+    }
+    if (isOffline) {
+      Alert.alert("İnternet Yok", "Yapay zeka analizi için internet bağlantısı gereklidir.");
+      return;
+    }
+
+    setAiYukleniyor(true);
+    try {
+      const response = await axios.post(AI_MODEL_URL, {
+        email: kullaniciEmail,
+        anlik_seker: parseFloat(kanSekeri),
+        guncel_karbonhidrat: parseFloat(toplamKarbonhidrat)
+      });
+
+      if (response.data.durum === 'basarili') {
+        const { gelecekteki_seker, onerilen_insulin } = response.data.analiz_sonucu;
+        setGelecekSeker(gelecekteki_seker);
+        setToplamOnerilenInsulin(onerilen_insulin.toFixed(1)); 
+        setYapayZekaKullanildi(true);
+      } else {
+        Alert.alert("Hata", "Akıllı analiz başarısız oldu.");
+      }
+    } catch (error) {
+      console.log("AI Hatası:", error);
+      Alert.alert("Hata", "Analiz sunucusuna bağlanılamadı.");
+    } finally {
+      setAiYukleniyor(false);
+    }
+  };
 
   const openCamera = async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -248,12 +272,10 @@ export default function AnaEkran({ navigation }) {
           <Text style={styles.manualBtnText}>Besin Değerini Manuel Gir</Text>
         </TouchableOpacity>
         
-        {/* YENİ EKLENEN BUTON */}
         <TouchableOpacity style={styles.favoritesBtn} onPress={() => navigation.navigate('SikTuketilenler')}>
           <Ionicons name="heart" size={20} color="#fff" />
           <Text style={styles.favoritesBtnText}>Sık Tükettiklerim</Text>
         </TouchableOpacity>
-
       </View>
 
       {!image && !manuelMod && !analizSonucu && (
@@ -302,6 +324,7 @@ export default function AnaEkran({ navigation }) {
             <Text style={styles.foodName}>{analizSonucu.turkce_isim}</Text>
             <Text style={styles.foodDetail}>100g İçin Temel Değer: {analizSonucu.karbonhidrat_miktari}g Karb.</Text>
             <View style={styles.divider}></View>
+            
             <View style={styles.inputRow}>
                 <View style={styles.inputGroup}>
                     <Text style={styles.label}>Tüketim (g):</Text>
@@ -313,44 +336,62 @@ export default function AnaEkran({ navigation }) {
                 </View>
             </View>
 
-            {hipoglisemi && (
-                <View style={styles.warningBox}>
-                    <Ionicons name="warning" size={24} color="#D32F2F" />
-                    <View style={{flex: 1, marginLeft: 10}}>
-                      <Text style={styles.warningTitle}>ACİL: DÜŞÜK ŞEKER</Text>
-                      <Text style={styles.warningText}>Kan şekeriniz çok düşük. İnsülin yapmadan önce 15g hızlı karbonhidrat almalısınız.</Text>
-                    </View>
-                </View>
-            )}
-
-            {hiperglisemi && (
-                <View style={styles.warningBox}>
-                    <Ionicons name="alert-circle" size={24} color="#D32F2F" />
-                    <View style={{flex: 1, marginLeft: 10}}>
-                      <Text style={styles.warningTitle}>UYARI: YÜKSEK ŞEKER</Text>
-                      <Text style={styles.warningText}>Kan şekeriniz yüksek seviyede. Hesaplanan düzeltme dozunu yemek insülininize eklemeyi unutmayın.</Text>
-                    </View>
-                </View>
-            )}
-
             <View style={styles.summaryBox}>
                 <Text style={styles.carbText}>Toplam Karbonhidrat: <Text style={{color: '#8E24AA'}}>{toplamKarbonhidrat}g</Text></Text>
             </View>
-            <View style={styles.insulinBox}>
-                <View style={styles.insulinRow}>
-                  <Text style={styles.insulinBreakdown}>Yemek İçin:</Text>
-                  <Text style={styles.boldDose}>{yemekInsulini} Ü</Text>
-                </View>
-                {kanSekeri !== '' && (
-                  <View style={styles.insulinRow}>
-                    <Text style={styles.insulinBreakdown}>Şeker Düzeltme:</Text>
-                    <Text style={duzeltmeInsulini > 0 ? styles.highDose : styles.lowDose}>{duzeltmeInsulini > 0 ? `+${duzeltmeInsulini}` : duzeltmeInsulini} Ü</Text>
-                  </View>
+
+            {/* --- GÜNCELLENEN: YAPAY ZEKA TETİKLEYİCİ BUTON --- */}
+            {kanSekeri !== '' && gramaj !== '' && !yapayZekaKullanildi && (
+              <TouchableOpacity style={styles.aiActionBtn} onPress={lstmTahminiAl} disabled={aiYukleniyor}>
+                {aiYukleniyor ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="analytics" size={22} color="#fff" style={{marginRight: 8}} />
+                    <Text style={styles.aiActionBtnText}>Geçmiş Verilerime Göre Analiz Et</Text>
+                  </>
                 )}
-                <View style={styles.totalDoseLine}></View>
-                <Text style={styles.insulinLabel}>Net Uygulanacak Doz</Text>
-                <Text style={styles.insulinValue}>{toplamOnerilenInsulin} Ünite</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* --- GÜNCELLENEN: YAPAY ZEKA TAHMİN SONUCU GÖSTERİMİ --- */}
+            {yapayZekaKullanildi && gelecekSeker && (
+              <View style={styles.aiResultBox}>
+                <View style={styles.aiResultIconContainer}>
+                  <Ionicons name="bulb" size={26} color="#5E35B1" />
+                </View>
+                <View style={{flex: 1, marginLeft: 12}}>
+                  <Text style={styles.aiResultTitle}>Kişiselleştirilmiş Şeker Tahmini</Text>
+                  <Text style={styles.aiResultText}>Önceki öğün kayıtlarınız incelendi. Bu yemeğin ardından şekerinizin <Text style={{fontWeight:'bold'}}>{gelecekSeker} mg/dL</Text> seviyesine çıkabileceği öngörülüyor.</Text>
+                </View>
+              </View>
+            )}
+
+            <View style={styles.insulinBox}>
+                {!yapayZekaKullanildi && (
+                  <>
+                    <View style={styles.insulinRow}>
+                      <Text style={styles.insulinBreakdown}>Klasik Yemek İnsülini:</Text>
+                      <Text style={styles.boldDose}>{yemekInsulini} Ü</Text>
+                    </View>
+                    {kanSekeri !== '' && (
+                      <View style={styles.insulinRow}>
+                        <Text style={styles.insulinBreakdown}>Şeker Düzeltme:</Text>
+                        <Text style={duzeltmeInsulini > 0 ? styles.highDose : styles.lowDose}>{duzeltmeInsulini > 0 ? `+${duzeltmeInsulini}` : duzeltmeInsulini} Ü</Text>
+                      </View>
+                    )}
+                    <View style={styles.totalDoseLine}></View>
+                  </>
+                )}
+                
+                <Text style={styles.insulinLabel}>
+                  {yapayZekaKullanildi ? "Akıllı Analizle Önerilen Doz" : "Klasik Hesaplanmış Doz"}
+                </Text>
+                <Text style={[styles.insulinValue, yapayZekaKullanildi && {color: '#311B92'}]}>
+                  {toplamOnerilenInsulin} Ünite
+                </Text>
             </View>
+
             <TouchableOpacity style={styles.saveActionBtn} onPress={gecmiseKaydet}>
               <Ionicons name="checkmark-circle-outline" size={24} color="#fff" style={{marginRight: 8}} />
               <Text style={styles.saveActionBtnText}>GEÇMİŞE KAYDET</Text>
@@ -375,12 +416,8 @@ const styles = StyleSheet.create({
   btnTextDark: { color: '#8E24AA', fontWeight: 'bold', fontSize: 14, marginLeft: 5 },
   manualBtn: { backgroundColor: '#FBF8FD', flexDirection: 'row', padding: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E1BEE7' },
   manualBtnText: { color: '#8E24AA', fontWeight: 'bold', fontSize: 14, marginLeft: 5 },
-  
-  /* YENİ BUTON TASARIMI */
   favoritesBtn: { backgroundColor: '#8E24AA', flexDirection: 'row', padding: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginTop: 10, elevation: 2 },
   favoritesBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14, marginLeft: 8 },
-  /* ------------------- */
-
   emptyStateContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, backgroundColor: '#fff', borderRadius: 16, borderStyle: 'dashed', borderWidth: 2, borderColor: '#CE93D8' },
   iconCircle: { width: 80, height: 80, backgroundColor: '#F3E5F5', borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 15 },
   emptyStateTitle: { fontSize: 18, fontWeight: 'bold', color: '#444', marginBottom: 5 },
@@ -404,9 +441,16 @@ const styles = StyleSheet.create({
   inputGroup: { width: '48%' },
   label: { fontSize: 13, color: '#555', marginBottom: 5, fontWeight: 'bold' },
   inputBox: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#fafafa', textAlign: 'center', color: '#333', fontWeight: 'bold' },
-  warningBox: { flexDirection: 'row', backgroundColor: '#FFEBEE', padding: 15, borderRadius: 12, borderColor: '#EF9A9A', borderWidth: 1, marginBottom: 15, alignItems: 'center' },
-  warningTitle: { color: '#C62828', fontWeight: 'bold', fontSize: 15, marginBottom: 2 },
-  warningText: { color: '#D32F2F', fontSize: 12, lineHeight: 16 },
+  
+  /* --- GÜNCELLENEN ŞIK VE AKILLI TASARIM STİLLERİ --- */
+  aiActionBtn: { backgroundColor: '#4527A0', flexDirection: 'row', paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 15, elevation: 4, shadowColor: '#311B92', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3 },
+  aiActionBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold', letterSpacing: 0.5 },
+  aiResultBox: { flexDirection: 'row', backgroundColor: '#EDE7F6', padding: 16, borderRadius: 12, borderColor: '#B39DDB', borderWidth: 1, marginBottom: 15, alignItems: 'center' },
+  aiResultIconContainer: { backgroundColor: '#D1C4E9', padding: 8, borderRadius: 25 },
+  aiResultTitle: { color: '#311B92', fontWeight: 'bold', fontSize: 15, marginBottom: 4 },
+  aiResultText: { color: '#4527A0', fontSize: 13, lineHeight: 18 },
+  /* -------------------------------------------------------- */
+
   summaryBox: { backgroundColor: '#F5F5F5', padding: 12, borderRadius: 8, alignItems: 'center', marginBottom: 15 },
   carbText: { fontSize: 16, fontWeight: 'bold', color: '#444' },
   insulinBox: { backgroundColor: '#F3E5F5', padding: 20, borderRadius: 12, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#CE93D8' }, 
@@ -416,7 +460,7 @@ const styles = StyleSheet.create({
   highDose: { fontWeight: 'bold', color: '#D32F2F', fontSize: 15 },
   lowDose: { fontWeight: 'bold', color: '#8E24AA', fontSize: 15 }, 
   totalDoseLine: { height: 1, backgroundColor: '#CE93D8', width: '100%', marginVertical: 12 },
-  insulinLabel: { fontSize: 14, color: '#6A1B9A', fontWeight: 'bold' }, 
+  insulinLabel: { fontSize: 14, color: '#6A1B9A', fontWeight: 'bold', textAlign: 'center' }, 
   insulinValue: { fontSize: 36, fontWeight: 'bold', color: '#4A148C', marginTop: 5 }, 
   saveActionBtn: { backgroundColor: '#8E24AA', flexDirection: 'row', paddingVertical: 15, borderRadius: 12, alignItems: 'center', justifyContent: 'center', elevation: 3 },
   saveActionBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 }
