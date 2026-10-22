@@ -35,7 +35,6 @@ export default function GecmisEkrani() {
   );
 
   const senkronizeEtVeGetir = async () => {
-    setLoading(true);
     try {
       const email = await AsyncStorage.getItem('hasta_email');
       const ad = await AsyncStorage.getItem('hasta_ad');
@@ -43,20 +42,31 @@ export default function GecmisEkrani() {
       
       if (!email) {
           console.error("Kullanıcı e-postası bulunamadı!");
-          setLoading(false);
           return;
       }
       setHastaEmail(email);
 
-      // 1. Önce telefonun hafızasında bekleyen offline veri var mı bak
+      // 1. Çevrimdışı (offline) kayıtları kontrol et
       const offlineVeriString = await AsyncStorage.getItem('offline_kayitlar');
       let offlineVeriler = offlineVeriString ? JSON.parse(offlineVeriString) : [];
 
       if (isOffline) {
-        // İNTERNET YOKSA: Sadece telefonun hafızasındaki verileri göster
-        setGecmisVerileri(offlineVeriler.reverse()); // En son eklenen en üstte görünsün
+        // İNTERNET YOKSA: Telefon hafızasındaki offline verileri göster
+        setGecmisVerileri(offlineVeriler.reverse()); 
+        setLoading(false);
       } else {
-        // İNTERNET VARSA: Yerelde bekleyen verileri sunucuya senkronize et
+        // İNTERNET VARSA:
+        
+        // YENİ ADIM (ÖNBELLEK): Sunucuya gitmeden önce eski önbelleği anında ekrana bas
+        const cachedData = await AsyncStorage.getItem('@gecmis_cache');
+        if (cachedData) {
+            setGecmisVerileri(JSON.parse(cachedData));
+            setLoading(false); // Önbellek varsa loading'i kapat, kullanıcı veriyi anında görsün
+        } else {
+            setLoading(true); // Önbellek boşsa (ilk giriş) mecbur loading göstereceğiz
+        }
+
+        // Offline bekleyen verileri sunucuya senkronize et
         if (offlineVeriler.length > 0) {
             for (const kayit of offlineVeriler) {
                 try {
@@ -65,22 +75,24 @@ export default function GecmisEkrani() {
                     console.error("Offline kayıt senkronize edilemedi:", err);
                 }
             }
-            // Eşitleme bitince yerel belleği temizle
             await AsyncStorage.removeItem('offline_kayitlar');
         }
 
-        // 2. Ardından sunucudaki güncel ve tam listeyi çek
+        // Arka planda sunucudaki güncel ve tam listeyi çek
         const response = await axios.get(`${BACKEND_URL}/gecmis`, { 
             params: { email: email } 
         });
 
         if (response.data.durum === 'basarili') {
+          // Ekranda görünen listeyi yeni veriyle sessizce tazele
           setGecmisVerileri(response.data.veriler);
+          // Gelecekteki girişler için bu yeni listeyi önbelleğe kaydet
+          await AsyncStorage.setItem('@gecmis_cache', JSON.stringify(response.data.veriler));
         }
+        setLoading(false);
       }
     } catch (error) {
-      console.error("Geçmiş verileri çekilemedi veya senkronize edilemedi", error);
-    } finally {
+      console.error("Geçmiş verileri çekilemedi", error);
       setLoading(false);
     }
   };
