@@ -10,7 +10,7 @@ import NetInfo from '@react-native-community/netinfo';
 const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
 const AI_MODEL_URL = 'https://reporting-service-vsbz.onrender.com/insulin-tahmini'; 
 
-export default function AnaEkran({ navigation }) {
+export default function AnaEkran({ navigation, route }) { // route eklendi
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
@@ -61,6 +61,17 @@ export default function AnaEkran({ navigation }) {
     });
     return () => unsubscribe();
   }, []);
+
+  // SIK TÜKETİLENLERDEN GELEN VERİYİ YAKALAMA
+  useEffect(() => {
+    if (route.params?.secilenGecmisYemek) {
+      setAnalizSonucu(route.params.secilenGecmisYemek); 
+      setManuelMod(false); 
+      setImage(null); 
+      setGramaj(''); // ÖNEMLİ: Gramajı sıfırlıyoruz ki kullanıcı bugünkü porsiyonunu kendi eliyle girsin
+      setStatus('Sık tüketilenlerden seçildi. Lütfen tüketeceğiniz gramajı girin ⚡');
+    }
+  }, [route.params?.secilenGecmisYemek]);
 
   useEffect(() => {
     if (analizSonucu && gramaj) {
@@ -340,7 +351,6 @@ export default function AnaEkran({ navigation }) {
                 <Text style={styles.carbText}>Toplam Karbonhidrat: <Text style={{color: '#8E24AA'}}>{toplamKarbonhidrat}g</Text></Text>
             </View>
 
-            {/* --- GÜNCELLENEN: YAPAY ZEKA TETİKLEYİCİ BUTON --- */}
             {kanSekeri !== '' && gramaj !== '' && !yapayZekaKullanildi && (
               <TouchableOpacity style={styles.aiActionBtn} onPress={lstmTahminiAl} disabled={aiYukleniyor}>
                 {aiYukleniyor ? (
@@ -354,7 +364,6 @@ export default function AnaEkran({ navigation }) {
               </TouchableOpacity>
             )}
 
-            {/* --- GÜNCELLENEN: YAPAY ZEKA TAHMİN SONUCU GÖSTERİMİ --- */}
             {yapayZekaKullanildi && gelecekSeker && (
               <View style={styles.aiResultBox}>
                 <View style={styles.aiResultIconContainer}>
@@ -442,14 +451,12 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, color: '#555', marginBottom: 5, fontWeight: 'bold' },
   inputBox: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#fafafa', textAlign: 'center', color: '#333', fontWeight: 'bold' },
   
-  /* --- GÜNCELLENEN ŞIK VE AKILLI TASARIM STİLLERİ --- */
   aiActionBtn: { backgroundColor: '#4527A0', flexDirection: 'row', paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 15, elevation: 4, shadowColor: '#311B92', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3 },
   aiActionBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold', letterSpacing: 0.5 },
   aiResultBox: { flexDirection: 'row', backgroundColor: '#EDE7F6', padding: 16, borderRadius: 12, borderColor: '#B39DDB', borderWidth: 1, marginBottom: 15, alignItems: 'center' },
   aiResultIconContainer: { backgroundColor: '#D1C4E9', padding: 8, borderRadius: 25 },
   aiResultTitle: { color: '#311B92', fontWeight: 'bold', fontSize: 15, marginBottom: 4 },
   aiResultText: { color: '#4527A0', fontSize: 13, lineHeight: 18 },
-  /* -------------------------------------------------------- */
 
   summaryBox: { backgroundColor: '#F5F5F5', padding: 12, borderRadius: 8, alignItems: 'center', marginBottom: 15 },
   carbText: { fontSize: 16, fontWeight: 'bold', color: '#444' },

@@ -38,7 +38,18 @@ const SikTuketilenler = ({ navigation }) => {
   const renderYemekKarti = ({ item }) => (
     <TouchableOpacity 
         style={styles.card}
-        onPress={() => console.log(`${item.turkce_isim} seçildi`)}
+        onPress={() => {
+          // KESİN ÇÖZÜM: Doğru Menü (MainTabs) ve Doğru Sekme (Yemek Analizi) hedeflendi
+          navigation.navigate('MainTabs', {
+            screen: 'Yemek Analizi',
+            params: {
+              secilenGecmisYemek: {
+                turkce_isim: item.turkce_isim,
+                karbonhidrat_miktari: item.karbonhidrat_miktari 
+              }
+            }
+          });
+        }}
     >
       <View style={styles.cardContent}>
         <View style={styles.iconContainer}>
@@ -76,14 +87,14 @@ const SikTuketilenler = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F4F0F9', // Diğer sayfalardaki ortak arkaplan
+    backgroundColor: '#F4F0F9', 
     paddingHorizontal: 15,
     paddingTop: 10,
   },
   pageTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#6A1B9A', // Ortak koyu mor başlık rengi
+    color: '#6A1B9A', 
     marginBottom: 20,
     marginTop: 20,
     marginLeft: 5,
@@ -91,7 +102,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#fff',
     padding: 15,
-    borderRadius: 16, // Ortak köşeli hatlar
+    borderRadius: 16, 
     marginBottom: 15,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -102,7 +113,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
     borderWidth: 1,
-    borderColor: '#E1BEE7', // İnce açık mor çerçeve
+    borderColor: '#E1BEE7', 
   },
   cardContent: {
     flex: 1,
@@ -119,10 +130,10 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: 'bold',
     color: '#2C3E50',
-    flexShrink: 1, // Uzun isimlerin taşmasını engeller
+    flexShrink: 1, 
   },
   badge: {
-    backgroundColor: '#F3E5F5', // Ortak açık mor arkaplan
+    backgroundColor: '#F3E5F5', 
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 12,
@@ -130,7 +141,7 @@ const styles = StyleSheet.create({
     borderColor: '#CE93D8',
   },
   badgeText: {
-    color: '#8E24AA', // Ortak vurgu moru
+    color: '#8E24AA', 
     fontWeight: 'bold',
     fontSize: 13,
   },
