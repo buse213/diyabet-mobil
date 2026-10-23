@@ -78,10 +78,15 @@ export default function GirisEkrani({ navigation }) {
                         </View>
 
                         <Text style={styles.label}>Şifre</Text>
-                        <View style={styles.inputWrapper}>
+                        <View style={styles.inputWrapperSifre}>
                             <Ionicons name="lock-closed-outline" size={20} color="#8E24AA" style={styles.inputIcon} />
                             <TextInput style={styles.input} placeholder="••••••••" value={sifre} onChangeText={setSifre} secureTextEntry />
                         </View>
+
+                        {/* YÖNLENDİRME BURAYA EKLENDİ */}
+                        <TouchableOpacity onPress={() => navigation.navigate('SifremiUnuttum')} style={styles.forgotPasswordBtn}>
+                            <Text style={styles.forgotPasswordText}>Şifremi Unuttum</Text>
+                        </TouchableOpacity>
 
                         <TouchableOpacity style={styles.loginBtn} onPress={handleGiris}>
                             <Text style={styles.loginBtnText}>GİRİŞ YAP</Text>
@@ -110,9 +115,12 @@ const styles = StyleSheet.create({
     formContainer: { width: '100%', backgroundColor: '#fff', padding: 25, borderRadius: 20, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 5 },
     label: { fontSize: 14, fontWeight: 'bold', color: '#444', marginBottom: 8, marginLeft: 5 },
     inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FBF8FD', borderWidth: 1, borderColor: '#E1BEE7', borderRadius: 12, marginBottom: 20, paddingHorizontal: 15 },
+    inputWrapperSifre: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FBF8FD', borderWidth: 1, borderColor: '#E1BEE7', borderRadius: 12, marginBottom: 8, paddingHorizontal: 15 },
     inputIcon: { marginRight: 10 },
     input: { flex: 1, height: 50, fontSize: 15, color: '#333' },
-    loginBtn: { backgroundColor: '#8E24AA', borderRadius: 12, height: 55, justifyContent: 'center', alignItems: 'center', marginTop: 10, elevation: 2 },
+    forgotPasswordBtn: { alignSelf: 'flex-end', marginBottom: 20, marginRight: 5 },
+    forgotPasswordText: { color: '#8E24AA', fontWeight: 'bold', fontSize: 13 },
+    loginBtn: { backgroundColor: '#8E24AA', borderRadius: 12, height: 55, justifyContent: 'center', alignItems: 'center', elevation: 2 },
     loginBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
     registerContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: 25 },
     registerText: { color: '#666', fontSize: 14 },

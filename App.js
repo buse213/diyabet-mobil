@@ -15,8 +15,9 @@ import HizliDozEkran from './screens/HizliDozEkran';
 import GirisEkrani from './screens/GirisEkrani';
 import KayitEkrani from './screens/KayitEkrani';
 
-// YENİ EKLENEN SAYFAMIZ
+// YENİ EKLENEN SAYFALAR
 import SikTuketilenler from './screens/SikTuketilenler';
+import SifremiUnuttum from './screens/SifremiUnuttum'; // YENİ EKLENDİ
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -81,10 +82,14 @@ export default function App() {
       <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Giris" component={GirisEkrani} />
         <Stack.Screen name="Kayit" component={KayitEkrani} />
+        
+        {/* ŞİFREMİ UNUTTUM EKRANI EKLENDİ */}
+        <Stack.Screen name="SifremiUnuttum" component={SifremiUnuttum} />
+        
         <Stack.Screen name="MainTabs" component={MainTabs} />
         <Stack.Screen name="Profil" component={ProfilEkran} />
         
-        {/* YENİ EKLENEN SAYFAMIZIN NAVİGASYON KAYDI */}
+        {/* SIK TÜKETİLENLER SAYFASININ NAVİGASYON KAYDI */}
         <Stack.Screen 
           name="SikTuketilenler" 
           component={SikTuketilenler} 
