@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, Image, ActivityIndicator, TextInput, Alert, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import { StyleSheet, Text, View, Image, ActivityIndicator, TextInput, Alert, ScrollView, TouchableOpacity, Platform, PermissionsAndroid } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import Voice from '@react-native-voice/voice';
 import axios from 'axios';
@@ -72,7 +72,8 @@ export default function AnaEkran({ navigation, route }) {
     Voice.onSpeechError = (err) => {
       console.log('Ses Tanıma Hatası:', err);
       setIsRecording(false);
-      setStatus('Ses algılanamadı, lütfen tekrar deneyin.');
+      // Hatanın teknik detayını ekrana yazdırıyoruz:
+      setStatus(`DETAYLI HATA: ${JSON.stringify(err)}`);
     };
     Voice.onSpeechResults = async (e) => {
       if (e.value && e.value.length > 0) {
@@ -220,24 +221,51 @@ export default function AnaEkran({ navigation, route }) {
     }
   };
 
-  const sesKaydetmeyeBasla = async () => {
+  // Tek dokunuşla çalışan sesli asistan fonksiyonu
+  const sesliAsistaniToggle = async () => {
     try {
       if (isOffline) {
         return Alert.alert("İnternet Yok", "Sesli asistan için internet bağlantısı gereklidir.");
       }
+
+      if (isRecording) {
+        await Voice.stop();
+        setIsRecording(false);
+        setStatus('Dinleme durduruldu.');
+        return;
+      }
+
+      // Android için mikrofon izin kontrolü
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: "Mikrofon İzni",
+            message: "Sesli komutları algılayabilmek için uygulamanın mikrofon iznine ihtiyacı var.",
+            buttonNeutral: "Daha Sonra Sor",
+            buttonNegative: "İptal",
+            buttonPositive: "İzin Ver"
+          }
+        );
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          Alert.alert("İzin Gerekli", "Mikrofon izni verilmediği için sesli asistan kullanılamıyor.");
+          return;
+        }
+      }
+
       setStatus('Sizi dinliyorum... (Örn: "1 porsiyon makarna yedim")');
+      
+      // Çakışmaları önlemek için önce durdurmayı tetikle
+      await Voice.stop().catch(() => {});
+      
+      // Dinlemeyi başlat
       await Voice.start('tr-TR');
+      setIsRecording(true);
     } catch (e) {
       console.error('Ses başlatma hatası:', e);
-    }
-  };
-
-  const sesKaydiniBitirVeGonder = async () => {
-    try {
-      await Voice.stop();
       setIsRecording(false);
-    } catch (e) {
-      console.error('Ses durdurma hatası:', e);
+      // Başlatma hatasını teknik detayıyla ekrana yazdırıyoruz:
+      setStatus(`BAŞLATMA HATASI: ${e.message || JSON.stringify(e)}`);
     }
   };
 
@@ -266,6 +294,7 @@ export default function AnaEkran({ navigation, route }) {
       setStatus('HATA: Ses analiz sunucusuna ulaşılamadı.');
     } finally {
       setLoading(false);
+      setIsRecording(false);
     }
   };
 
@@ -332,14 +361,14 @@ export default function AnaEkran({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
+        {/* Güncellenmiş Tek Dokunuşlu Sesli Asistan Butonu */}
         <TouchableOpacity 
           style={[styles.manualBtn, { marginBottom: 10 }, isRecording && { borderColor: '#D32F2F', backgroundColor: '#FFEBEE' }]} 
-          onPressIn={sesKaydetmeyeBasla} 
-          onPressOut={sesKaydiniBitirVeGonder}
+          onPress={sesliAsistaniToggle}
         >
           <Ionicons name={isRecording ? "mic" : "mic-outline"} size={20} color={isRecording ? "#D32F2F" : "#8E24AA"} />
           <Text style={[styles.manualBtnText, isRecording && { color: '#D32F2F' }]}>
-            {isRecording ? "Dinleniyor... (Bitirince Bırakın)" : "Sesli Asistana Söyle (Basılı Tut)"}
+            {isRecording ? "Dinleniyor... (Durdurmak için dokun)" : "Sesli Asistana Söyle (Dokun & Konuş)"}
           </Text>
         </TouchableOpacity>
 
