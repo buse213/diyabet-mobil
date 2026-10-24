@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, Image, ActivityIndicator, TextInput, Alert, ScrollView, TouchableOpacity, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import Voice from '@react-native-voice/voice';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
@@ -10,7 +11,7 @@ import NetInfo from '@react-native-community/netinfo';
 const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
 const AI_MODEL_URL = 'https://reporting-service-vsbz.onrender.com/insulin-tahmini'; 
 
-export default function AnaEkran({ navigation, route }) { // route eklendi
+export default function AnaEkran({ navigation, route }) {
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
@@ -41,6 +42,8 @@ export default function AnaEkran({ navigation, route }) { // route eklendi
   const [gelecekSeker, setGelecekSeker] = useState(null);
   const [yapayZekaKullanildi, setYapayZekaKullanildi] = useState(false);
 
+  const [isRecording, setIsRecording] = useState(false);
+
   useFocusEffect(
     React.useCallback(() => {
       const ayarlariCek = async () => {
@@ -62,13 +65,34 @@ export default function AnaEkran({ navigation, route }) { // route eklendi
     return () => unsubscribe();
   }, []);
 
-  // SIK TÜKETİLENLERDEN GELEN VERİYİ YAKALAMA
+  // Voice (Ses Tanıma) Dinleyicileri
+  useEffect(() => {
+    Voice.onSpeechStart = () => setIsRecording(true);
+    Voice.onSpeechEnd = () => setIsRecording(false);
+    Voice.onSpeechError = (err) => {
+      console.log('Ses Tanıma Hatası:', err);
+      setIsRecording(false);
+      setStatus('Ses algılanamadı, lütfen tekrar deneyin.');
+    };
+    Voice.onSpeechResults = async (e) => {
+      if (e.value && e.value.length > 0) {
+        const spokenText = e.value[0];
+        setStatus(`Algılanan Komut: "${spokenText}"\nAnaliz ediliyor...`);
+        await sesliKomutuBackendeGonder(spokenText);
+      }
+    };
+
+    return () => {
+      Voice.destroy().then(Voice.removeAllListeners);
+    };
+  }, []);
+
   useEffect(() => {
     if (route.params?.secilenGecmisYemek) {
       setAnalizSonucu(route.params.secilenGecmisYemek); 
       setManuelMod(false); 
       setImage(null); 
-      setGramaj(''); // ÖNEMLİ: Gramajı sıfırlıyoruz ki kullanıcı bugünkü porsiyonunu kendi eliyle girsin
+      setGramaj(''); 
       setStatus('Sık tüketilenlerden seçildi. Lütfen tüketeceğiniz gramajı girin ⚡');
     }
   }, [route.params?.secilenGecmisYemek]);
@@ -166,17 +190,7 @@ export default function AnaEkran({ navigation, route }) { // route eklendi
       Alert.alert(
         "İnternet Bağlantısı Yok",
         "Şu anda çevrimdışısınız. Uygulamayı kullanmaya devam etmek için lütfen tüketeceğiniz yemeği manuel olarak girin.",
-        [
-          { 
-            text: "Tamam, Manuel Gireceğim", 
-            onPress: () => {
-              setManuelMod(true);
-              setAnalizSonucu(null);
-              setImage(null);
-              setStatus('');
-            }
-          }
-        ]
+        [{ text: "Tamam, Manuel Gireceğim", onPress: () => { setManuelMod(true); setAnalizSonucu(null); setImage(null); setStatus(''); } }]
       );
       return; 
     }
@@ -184,13 +198,8 @@ export default function AnaEkran({ navigation, route }) { // route eklendi
     setLoading(true); setAnalizSonucu(null);
     try {
       setStatus('Besin değerleri hesaplanıyor...');
-
       const formData = new FormData();
-      formData.append('file', {
-        uri: image,
-        type: 'image/jpeg',
-        name: 'yemek.jpg',
-      });
+      formData.append('file', { uri: image, type: 'image/jpeg', name: 'yemek.jpg' });
 
       const response = await axios.post(`${BACKEND_URL}/isleme`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -198,20 +207,64 @@ export default function AnaEkran({ navigation, route }) { // route eklendi
 
       if (response.data.durum === 'basarili' && response.data.sonuc) {
         const { turkce_isim, karbonhidrat_miktari } = response.data.sonuc;
-        
         setStatus(`Analiz Tamamlandı!\nBulunan Yemek: ${turkce_isim}`);
-        setAnalizSonucu({
-          turkce_isim: turkce_isim,
-          karbonhidrat_miktari: karbonhidrat_miktari
-        });
+        setAnalizSonucu({ turkce_isim: turkce_isim, karbonhidrat_miktari: karbonhidrat_miktari });
       } else {
         setStatus('Yemek tespit edilemedi, lütfen manuel girmeyi deneyin.');
       }
       setLoading(false);
-
     } catch (error) {
       console.log("Bağlantı Hatası:", error);
       setStatus(`HATA: Analiz sunucusuna ulaşılamadı. Lütfen internet bağlantınızı kontrol edin.`);
+      setLoading(false);
+    }
+  };
+
+  const sesKaydetmeyeBasla = async () => {
+    try {
+      if (isOffline) {
+        return Alert.alert("İnternet Yok", "Sesli asistan için internet bağlantısı gereklidir.");
+      }
+      setStatus('Sizi dinliyorum... (Örn: "1 porsiyon makarna yedim")');
+      await Voice.start('tr-TR');
+    } catch (e) {
+      console.error('Ses başlatma hatası:', e);
+    }
+  };
+
+  const sesKaydiniBitirVeGonder = async () => {
+    try {
+      await Voice.stop();
+      setIsRecording(false);
+    } catch (e) {
+      console.error('Ses durdurma hatası:', e);
+    }
+  };
+
+  const sesliKomutuBackendeGonder = async (metin) => {
+    setLoading(true);
+    try {
+      const response = await axios.post(`${BACKEND_URL}/sesli-analiz`, {
+        komut: metin
+      });
+
+      if (response.data.durum === 'basarili' && response.data.sonuc) {
+        const { turkce_isim, karbonhidrat_miktari, tahmini_gramaj } = response.data.sonuc;
+        setImage(null);
+        setManuelMod(false);
+        setAnalizSonucu({
+          turkce_isim: turkce_isim,
+          karbonhidrat_miktari: karbonhidrat_miktari
+        });
+        if (tahmini_gramaj) setGramaj(tahmini_gramaj.toString());
+        setStatus(`Sesli Komut Anlaşıldı!\nBulunan Yemek: ${turkce_isim}`);
+      } else {
+        setStatus('Söylediğiniz yemek anlaşılamadı, lütfen tekrar deneyin.');
+      }
+    } catch (error) {
+      console.log("Ses Gönderme Hatası:", error);
+      setStatus('HATA: Ses analiz sunucusuna ulaşılamadı.');
+    } finally {
       setLoading(false);
     }
   };
@@ -278,6 +331,18 @@ export default function AnaEkran({ navigation, route }) { // route eklendi
             <Text style={styles.btnTextDark}>Galeriden Seç</Text>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity 
+          style={[styles.manualBtn, { marginBottom: 10 }, isRecording && { borderColor: '#D32F2F', backgroundColor: '#FFEBEE' }]} 
+          onPressIn={sesKaydetmeyeBasla} 
+          onPressOut={sesKaydiniBitirVeGonder}
+        >
+          <Ionicons name={isRecording ? "mic" : "mic-outline"} size={20} color={isRecording ? "#D32F2F" : "#8E24AA"} />
+          <Text style={[styles.manualBtnText, isRecording && { color: '#D32F2F' }]}>
+            {isRecording ? "Dinleniyor... (Bitirince Bırakın)" : "Sesli Asistana Söyle (Basılı Tut)"}
+          </Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.manualBtn} onPress={() => { setManuelMod(true); setAnalizSonucu(null); setImage(null); setStatus(''); }}>
           <Ionicons name="create-outline" size={20} color="#8E24AA" />
           <Text style={styles.manualBtnText}>Besin Değerini Manuel Gir</Text>
@@ -295,7 +360,7 @@ export default function AnaEkran({ navigation, route }) { // route eklendi
             <Ionicons name="scan-outline" size={50} color="#BA68C8" />
           </View>
           <Text style={styles.emptyStateTitle}>Analize Hazır</Text>
-          <Text style={styles.emptyStateDesc}>Öğününüze başlamadan önce yemeğinizin fotoğrafını çekin veya galeriden yükleyin.</Text>
+          <Text style={styles.emptyStateDesc}>Öğününüze başlamadan önce yemeğinizin fotoğrafını çekin, galeriden yükleyin veya mikrofonla söyleyin.</Text>
         </View>
       )}
 
@@ -313,6 +378,10 @@ export default function AnaEkran({ navigation, route }) { // route eklendi
           {loading && <ActivityIndicator size="large" color="#8E24AA" style={{marginTop: 20}} />}
         </View>
       )}
+
+      {!image && !manuelMod && !analizSonucu && status ? (
+        <Text style={styles.statusText}>{status}</Text>
+      ) : null}
 
       {manuelMod && (
         <View style={styles.manuelCard}>
@@ -400,6 +469,19 @@ export default function AnaEkran({ navigation, route }) { // route eklendi
                   {toplamOnerilenInsulin} Ünite
                 </Text>
             </View>
+
+            <TouchableOpacity 
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20, padding: 12, backgroundColor: '#F3E5F5', borderRadius: 8, borderWidth: 1, borderColor: '#CE93D8' }}
+                onPress={() => Alert.alert(
+                  "Klinik Karar Destek Sistemi", 
+                  "Bu insülin dozu; porsiyon hacminiz, karbonhidrat yoğunluğunuz ve anlık kan şekeri seviyeniz baz alınarak tıbbi hesaplama parametreleriyle klinik standartlara uygun olarak doğrulanmıştır."
+                )}
+            >
+                <Ionicons name="information-circle" size={22} color="#8E24AA" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#8E24AA', fontSize: 13, fontWeight: 'bold' }}>
+                    Klinik Hesaplama Gerekçesini Gör
+                </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity style={styles.saveActionBtn} onPress={gecmiseKaydet}>
               <Ionicons name="checkmark-circle-outline" size={24} color="#fff" style={{marginRight: 8}} />

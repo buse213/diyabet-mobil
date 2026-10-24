@@ -10,6 +10,7 @@ const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
 export default function AnaSayfaEkrani({ navigation }) {
   const [adSoyad, setAdSoyad] = useState('Kullanıcı');
   const [sonOlcum, setSonOlcum] = useState(null);
+  const [seriSayisi, setSeriSayisi] = useState(0);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -19,28 +20,93 @@ export default function AnaSayfaEkrani({ navigation }) {
 
   const veriGetir = async () => {
     try {
-      // 1. İsim çekme anahtarı düzeltildi ('hasta_ad' olarak)
       const isim = await AsyncStorage.getItem('hasta_ad');
       if (isim) setAdSoyad(isim);
 
-      // 2. YENİ: Kullanıcının e-postasını çekiyoruz
       const email = await AsyncStorage.getItem('hasta_email');
 
       if (email) {
-          // 3. YENİ: Sadece giriş yapan kullanıcıya ait son ölçümü getiriyoruz
           const response = await axios.get(`${BACKEND_URL}/gecmis`, {
               params: { email: email }
           });
           
           if (response.data.durum === 'basarili' && response.data.veriler.length > 0) {
-            setSonOlcum(response.data.veriler[0]); // En üstteki (en yeni) kaydı al
+            const veriler = response.data.veriler;
+            setSonOlcum(veriler[0]); 
+            
+            // Oyunlaştırma Serisi Hesaplama
+            hesaplaSeri(veriler);
           } else {
-            setSonOlcum(null); // Veri yoksa null yap ki "Henüz kayıt yok" mesajı çıksın
+            setSonOlcum(null); 
+            setSeriSayisi(0);
           }
       }
     } catch (error) {
       console.error("Ana sayfa verileri alınamadı", error);
     }
+  };
+
+  const hesaplaSeri = (veriler) => {
+    if (!veriler || veriler.length === 0) return;
+
+    // 1. Verileri gün bazında grupla
+    const gunlukOlcumler = {};
+    veriler.forEach(olcum => {
+      const tarih = new Date(olcum.tarih).toISOString().split('T')[0];
+      if (!gunlukOlcumler[tarih]) gunlukOlcumler[tarih] = [];
+      gunlukOlcumler[tarih].push(olcum.olculen_kan_sekeri);
+    });
+
+    // 2. Günleri en yeniden en eskiye doğru sırala
+    const siraliGunler = Object.keys(gunlukOlcumler).sort((a, b) => new Date(b) - new Date(a));
+    
+    const bugun = new Date().toISOString().split('T')[0];
+    const dun = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+    // 3. Kullanıcı bugün veya dün hiç ölçüm girmemişse seri zaten kopmuştur
+    if (siraliGunler[0] !== bugun && siraliGunler[0] !== dun) {
+       setSeriSayisi(0);
+       return;
+    }
+
+    let guncelSeri = 0;
+    let ardisikIhlal = 0; // Üst üste 300'ü geçme tolerans sayacı
+
+    // 4. Geçmişe doğru günleri tarayarak seriyi hesapla
+    for (let i = 0; i < siraliGunler.length; i++) {
+      const anlikGun = siraliGunler[i];
+      
+      // Tarih atlaması kontrolü: İki ölçüm günü arasında 1 günden fazla boşluk varsa seri geçmişte kopmuştur
+      if (i > 0) {
+          const oncekiGun = siraliGunler[i-1];
+          const farkGun = Math.round((new Date(oncekiGun) - new Date(anlikGun)) / 86400000);
+          if (farkGun > 1) break; 
+      }
+
+      const gunlukSekerler = gunlukOlcumler[anlikGun];
+      
+      // O gün 300'ün üzerinde değer GİRİLMİŞ Mİ?
+      const ihlalVarMi = gunlukSekerler.some(seker => seker > 300);
+
+      if (ihlalVarMi) {
+        ardisikIhlal++;
+        
+        if (ardisikIhlal >= 2) {
+          // İki gün üst üste 300 üzeri ihlal yapıldı, seri koptu.
+          if (i === 1) guncelSeri = 0;
+          break; 
+        } else {
+          // 1 günlük tolerans hakkı kullanıldı
+          guncelSeri++;
+        }
+      } else {
+        // Hedef aralıkta kalındı, ihlal zinciri sıfırlandı
+        ardisikIhlal = 0;
+        guncelSeri++;
+      }
+    }
+
+    setSeriSayisi(guncelSeri);
   };
 
   return (
@@ -56,6 +122,19 @@ export default function AnaSayfaEkrani({ navigation }) {
           <Ionicons name="person" size={24} color="#8E24AA" />
         </TouchableOpacity>
       </View>
+
+      {/* Oyunlaştırma - İdeal Şeker Serisi (Streak) Afişi */}
+      {seriSayisi > 0 && (
+        <View style={styles.streakBanner}>
+           <View style={styles.streakIconBox}>
+             <Text style={styles.streakFireIcon}>🔥</Text>
+           </View>
+           <View style={styles.streakTextBox}>
+             <Text style={styles.streakTitle}>{seriSayisi} Günlük Kontrol Serisi!</Text>
+             <Text style={styles.streakDesc}>Harika gidiyorsun! Kan şekerin kontrol altında.</Text>
+           </View>
+        </View>
+      )}
 
       {/* Son Ölçüm / Durum Özeti */}
       <View style={styles.statusCard}>
@@ -131,6 +210,13 @@ const styles = StyleSheet.create({
   welcomeTitle: { fontSize: 22, fontWeight: 'bold', color: '#6A1B9A', marginTop: 2 },
   profileBadge: { width: 45, height: 45, backgroundColor: '#F3E5F5', borderRadius: 22.5, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#CE93D8' },
   
+  streakBanner: { flexDirection: 'row', backgroundColor: '#FFF3E0', padding: 15, borderRadius: 16, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#FFB74D', elevation: 2 },
+  streakIconBox: { width: 50, height: 50, backgroundColor: '#FFE0B2', borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  streakFireIcon: { fontSize: 26 },
+  streakTextBox: { flex: 1 },
+  streakTitle: { fontSize: 16, fontWeight: 'bold', color: '#E65100', marginBottom: 4 },
+  streakDesc: { fontSize: 12, color: '#F57C00', fontWeight: '500' },
+
   statusCard: { backgroundColor: '#fff', padding: 20, borderRadius: 16, marginBottom: 20, elevation: 3, borderWidth: 1, borderColor: '#E1BEE7' },
   statusHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
   statusHeaderText: { fontSize: 16, fontWeight: 'bold', color: '#6A1B9A', marginLeft: 8 },

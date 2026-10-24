@@ -1,5 +1,15 @@
 {
-  "android": {
-    "package": "com.busecam.diyabetmobil"
+  "expo": {
+    "android": {
+      "package": "com.busecam.diyabetmobil",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-sharing",
+      "expo-font"
+    ]
   }
 }
