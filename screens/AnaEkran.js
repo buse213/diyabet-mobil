@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, Image, ActivityIndicator, TextInput, Alert, ScrollView, TouchableOpacity, Platform, PermissionsAndroid } from 'react-native';
+import { StyleSheet, Text, View, Image, ActivityIndicator, TextInput, Alert, ScrollView, TouchableOpacity } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import Voice from '@react-native-voice/voice';
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
@@ -65,28 +65,24 @@ export default function AnaEkran({ navigation, route }) {
     return () => unsubscribe();
   }, []);
 
-  // Voice (Ses Tanıma) Dinleyicileri
-  useEffect(() => {
-    Voice.onSpeechStart = () => setIsRecording(true);
-    Voice.onSpeechEnd = () => setIsRecording(false);
-    Voice.onSpeechError = (err) => {
-      console.log('Ses Tanıma Hatası:', err);
-      setIsRecording(false);
-      // Hatanın teknik detayını ekrana yazdırıyoruz:
-      setStatus(`DETAYLI HATA: ${JSON.stringify(err)}`);
-    };
-    Voice.onSpeechResults = async (e) => {
-      if (e.value && e.value.length > 0) {
-        const spokenText = e.value[0];
-        setStatus(`Algılanan Komut: "${spokenText}"\nAnaliz ediliyor...`);
-        await sesliKomutuBackendeGonder(spokenText);
-      }
-    };
-
-    return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
-    };
-  }, []);
+  // Ses Tanıma Dinleyicileri (expo-speech-recognition)
+  useSpeechRecognitionEvent('start', () => setIsRecording(true));
+  useSpeechRecognitionEvent('end', () => setIsRecording(false));
+  useSpeechRecognitionEvent('error', (e) => {
+    console.log('Ses Tanıma Hatası:', e);
+    setIsRecording(false);
+    if (e.error === 'language-not-supported') {
+      setStatus('Türkçe çevrimdışı ses paketi yüklü değil. Telefon ayarlarından Türkçe ses tanıma paketini indirin veya manuel girin.');
+    } else {
+      setStatus(`HATA: ${e.error} - ${e.message}`);
+    }
+  });
+  useSpeechRecognitionEvent('result', async (e) => {
+    if (e.isFinal && e.results && e.results.length > 0) {
+      const spokenText = e.results[0].transcript;
+      sesliKomutuIsle(spokenText);
+    }
+  });
 
   useEffect(() => {
     if (route.params?.secilenGecmisYemek) {
@@ -221,81 +217,110 @@ export default function AnaEkran({ navigation, route }) {
     }
   };
 
-  // Tek dokunuşla çalışan sesli asistan fonksiyonu
+  // Tek dokunuşla çalışan sesli asistan fonksiyonu (expo-speech-recognition)
   const sesliAsistaniToggle = async () => {
     try {
-      if (isOffline) {
-        return Alert.alert("İnternet Yok", "Sesli asistan için internet bağlantısı gereklidir.");
-      }
-
       if (isRecording) {
-        await Voice.stop();
-        setIsRecording(false);
+        ExpoSpeechRecognitionModule.stop();
         setStatus('Dinleme durduruldu.');
         return;
       }
 
-      // Android için mikrofon izin kontrolü
-      if (Platform.OS === 'android') {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-          {
-            title: "Mikrofon İzni",
-            message: "Sesli komutları algılayabilmek için uygulamanın mikrofon iznine ihtiyacı var.",
-            buttonNeutral: "Daha Sonra Sor",
-            buttonNegative: "İptal",
-            buttonPositive: "İzin Ver"
-          }
-        );
-        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-          Alert.alert("İzin Gerekli", "Mikrofon izni verilmediği için sesli asistan kullanılamıyor.");
-          return;
-        }
+      const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!granted) {
+        return Alert.alert("İzin Gerekli", "Mikrofon izni verilmediği için sesli asistan kullanılamıyor.");
       }
 
       setStatus('Sizi dinliyorum... (Örn: "1 porsiyon makarna yedim")');
-      
-      // Çakışmaları önlemek için önce durdurmayı tetikle
-      await Voice.stop().catch(() => {});
-      
-      // Dinlemeyi başlat
-      await Voice.start('tr-TR');
-      setIsRecording(true);
+      const secenekler = { lang: 'tr-TR', interimResults: false };
+      if (isOffline) {
+        // İnternet yokken telefonun içindeki çevrimdışı ses tanımayı kullan
+        if (!ExpoSpeechRecognitionModule.supportsOnDeviceRecognition()) {
+          setStatus('');
+          return Alert.alert(
+            "Çevrimdışı Desteklenmiyor",
+            "Bu telefon internetsiz ses tanımayı desteklemiyor. Lütfen yemeği manuel girin."
+          );
+        }
+        secenekler.requiresOnDeviceRecognition = true;
+      }
+      ExpoSpeechRecognitionModule.start(secenekler);
     } catch (e) {
       console.error('Ses başlatma hatası:', e);
       setIsRecording(false);
-      // Başlatma hatasını teknik detayıyla ekrana yazdırıyoruz:
       setStatus(`BAŞLATMA HATASI: ${e.message || JSON.stringify(e)}`);
     }
   };
 
-  const sesliKomutuBackendeGonder = async (metin) => {
+  // Manuel giriş formunu yemek adı ve gramajla açar
+  const manuelFormaAc = (isim, gram) => {
+    setImage(null);
+    setAnalizSonucu(null);
+    setManuelIsim(isim);
+    setManuelKarb('');
+    if (gram) setGramaj(gram);
+    setManuelMod(true);
+    setStatus('');
+  };
+
+  // Sesli komut: internet varsa Gemini ile otomatik, yoksa (veya başarısızsa) manuel form
+  const sesliKomutuIsle = async (metin) => {
+    let temiz = metin.toLocaleLowerCase('tr-TR');
+
+    // Gramaj: "200 gram", "150 gr", "100 g"
+    let gram = null;
+    const gramEsle = temiz.match(/(\d+)\s*(gram|gr|g)(\s|$)/);
+    if (gramEsle) {
+      gram = gramEsle[1];
+      temiz = temiz.replace(gramEsle[0], ' ');
+    }
+
+    // Kalan sayıları ve gereksiz kelimeleri at
+    temiz = temiz.replace(/\d+([.,]\d+)?/g, ' ');
+    const gereksiz = ['gram', 'gr', 'porsiyon', 'tane', 'adet', 'dilim', 'bardak', 'kase', 'tabak',
+      'yedim', 'yiyeceğim', 'yiyorum', 'içtim', 'içeceğim', 'içiyorum', 'ben', 'bir', 'biraz', 'şu', 'bugün', 'kadar'];
+    const kelimeler = temiz.split(/\s+/).filter(k => k && !gereksiz.includes(k));
+    const isim = kelimeler
+      .map(k => k.charAt(0).toLocaleUpperCase('tr-TR') + k.slice(1))
+      .join(' ');
+
+    if (!isim) {
+      setStatus('Yemek adı anlaşılamadı, lütfen tekrar deneyin.');
+      return;
+    }
+
+    // İnternet yoksa doğrudan manuel form
+    if (isOffline) {
+      manuelFormaAc(isim, gram);
+      return;
+    }
+
+    // İnternet varsa Gemini'den besin değerini iste
+    setStatus(`Algılanan: "${metin}"\nBesin değerleri hesaplanıyor...`);
     setLoading(true);
     try {
-      const response = await axios.post(`${BACKEND_URL}/sesli-analiz`, {
-        komut: metin
-      });
+      const response = await axios.post(`${BACKEND_URL}/sesli-analiz`, { komut: metin }, { timeout: 20000 });
+      const sonuc = response.data && response.data.sonuc;
+      const karb = sonuc ? parseFloat(sonuc.karbonhidrat_miktari) : NaN;
 
-      if (response.data.durum === 'basarili' && response.data.sonuc) {
-        const { turkce_isim, karbonhidrat_miktari, tahmini_gramaj } = response.data.sonuc;
+      if (response.data && response.data.durum === 'basarili' && sonuc && !isNaN(karb)) {
         setImage(null);
         setManuelMod(false);
-        setAnalizSonucu({
-          turkce_isim: turkce_isim,
-          karbonhidrat_miktari: karbonhidrat_miktari
-        });
-        if (tahmini_gramaj) setGramaj(tahmini_gramaj.toString());
-        setStatus(`Sesli Komut Anlaşıldı!\nBulunan Yemek: ${turkce_isim}`);
-      } else {
-        setStatus('Söylediğiniz yemek anlaşılamadı, lütfen tekrar deneyin.');
+        setAnalizSonucu({ turkce_isim: sonuc.turkce_isim, karbonhidrat_miktari: karb, tahmini: true });
+        // Kullanıcı gramaj söylediyse onu kullan, yoksa tahmini porsiyon
+        setGramaj(gram ? gram : (sonuc.tahmini_gramaj ? String(sonuc.tahmini_gramaj) : '100'));
+        setStatus('');
+        return;
       }
     } catch (error) {
-      console.log("Ses Gönderme Hatası:", error);
-      setStatus('HATA: Ses analiz sunucusuna ulaşılamadı.');
+      console.log("Sesli analiz hatası:", error);
     } finally {
       setLoading(false);
-      setIsRecording(false);
     }
+
+    // Otomatik bulunamadıysa manuel forma düş
+    Alert.alert("Besin Değeri Bulunamadı", "Karbonhidrat değeri otomatik bulunamadı. Lütfen 100 gramındaki karbonhidratı manuel girin.");
+    manuelFormaAc(isim, gram);
   };
 
   const manuelGirisUygula = () => {
@@ -361,7 +386,7 @@ export default function AnaEkran({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        {/* Güncellenmiş Tek Dokunuşlu Sesli Asistan Butonu */}
+        {/* Tek Dokunuşlu Sesli Asistan Butonu */}
         <TouchableOpacity 
           style={[styles.manualBtn, { marginBottom: 10 }, isRecording && { borderColor: '#D32F2F', backgroundColor: '#FFEBEE' }]} 
           onPress={sesliAsistaniToggle}
@@ -432,6 +457,11 @@ export default function AnaEkran({ navigation, route }) {
         <View style={styles.resultCard}>
             <Text style={styles.foodName}>{analizSonucu.turkce_isim}</Text>
             <Text style={styles.foodDetail}>100g İçin Temel Değer: {analizSonucu.karbonhidrat_miktari}g Karb.</Text>
+            {analizSonucu.tahmini ? (
+              <Text style={{ fontSize: 12, color: '#B71C1C', textAlign: 'center', marginTop: 8, fontWeight: 'bold' }}>
+                ⚠️ Bu değer yapay zekâ tahminidir. Lütfen kontrol edin; yanlışsa "Besin Değerini Manuel Gir" ile düzeltin.
+              </Text>
+            ) : null}
             <View style={styles.divider}></View>
             
             <View style={styles.inputRow}>

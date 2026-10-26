@@ -9,7 +9,14 @@
     "plugins": [
       "expo-asset",
       "expo-sharing",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Sesli komutlar için mikrofon erişimi gerekiyor.",
+          "speechRecognitionPermission": "Konuşmayı yazıya çevirmek için izin gerekiyor."
+        }
+      ]
     ]
   }
 }
