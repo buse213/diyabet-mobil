@@ -71,10 +71,25 @@ export default function AnaEkran({ navigation, route }) {
   useSpeechRecognitionEvent('error', (e) => {
     console.log('Ses Tanıma Hatası:', e);
     setIsRecording(false);
-    if (e.error === 'language-not-supported') {
-      setStatus('Türkçe çevrimdışı ses paketi yüklü değil. Telefon ayarlarından Türkçe ses tanıma paketini indirin veya manuel girin.');
-    } else {
-      setStatus(`HATA: ${e.error} - ${e.message}`);
+    
+    // İngilizce ve teknik hatalar yerine Türkçe, anlaşılır mesajlar
+    switch (e.error) {
+      case 'no-speech':
+        setStatus('Sesiniz algılanamadı, lütfen butona basıp tekrar konuşmayı deneyin.');
+        break;
+      case 'network':
+        setStatus('Ağ bağlantısı zayıf olduğu için sesiniz anlaşılamadı.');
+        break;
+      case 'language-not-supported':
+        setStatus('Telefonda Türkçe ses paketi bulunamadı. Lütfen manuel girişi kullanın.');
+        break;
+      case 'not-allowed':
+      case 'audio-capture':
+        setStatus('Mikrofon kullanılamıyor, lütfen cihaz izinlerinizi kontrol edin.');
+        break;
+      default:
+        setStatus('Ses dinlenirken bir sorun oluştu. Lütfen yemeği manuel girin.');
+        break;
     }
   });
   useSpeechRecognitionEvent('result', async (e) => {
@@ -132,7 +147,7 @@ export default function AnaEkran({ navigation, route }) {
       return;
     }
     if (isOffline) {
-      Alert.alert("İnternet Yok", "Yapay zeka analizi için internet bağlantısı gereklidir.");
+      Alert.alert("İnternet Yok", "Akıllı analiz için internet bağlantısı gereklidir.");
       return;
     }
 
@@ -248,7 +263,7 @@ export default function AnaEkran({ navigation, route }) {
     } catch (e) {
       console.error('Ses başlatma hatası:', e);
       setIsRecording(false);
-      setStatus(`BAŞLATMA HATASI: ${e.message || JSON.stringify(e)}`);
+      setStatus('Sesli asistan şu anda başlatılamıyor, lütfen manuel girişi kullanın.');
     }
   };
 
@@ -263,7 +278,7 @@ export default function AnaEkran({ navigation, route }) {
     setStatus('');
   };
 
-  // Sesli komut: internet varsa Gemini ile otomatik, yoksa (veya başarısızsa) manuel form
+  // Sesli komut: internet varsa API ile otomatik, yoksa (veya başarısızsa) manuel form
   const sesliKomutuIsle = async (metin) => {
     let temiz = metin.toLocaleLowerCase('tr-TR');
 
@@ -289,17 +304,21 @@ export default function AnaEkran({ navigation, route }) {
       return;
     }
 
-    // İnternet yoksa doğrudan manuel form
+    // İnternet yoksa doğrudan uyarı verip manuel forma geç
     if (isOffline) {
+      Alert.alert(
+        "Çevrimdışı Mod", 
+        "İnternet bağlantınız olmadığı için besin değeri veritabanına ulaşılamadı. Lütfen karbonhidrat miktarını manuel girin."
+      );
       manuelFormaAc(isim, gram);
       return;
     }
 
-    // İnternet varsa Gemini'den besin değerini iste
+    // İnternet varsa besin değerini iste
     setStatus(`Algılanan: "${metin}"\nBesin değerleri hesaplanıyor...`);
     setLoading(true);
     try {
-      const response = await axios.post(`${BACKEND_URL}/sesli-analiz`, { komut: metin }, { timeout: 20000 });
+      const response = await axios.post(`${BACKEND_URL}/sesli-analiz`, { komut: metin }, { timeout: 60000 });
       const sonuc = response.data && response.data.sonuc;
       const karb = sonuc ? parseFloat(sonuc.karbonhidrat_miktari) : NaN;
 
@@ -459,7 +478,7 @@ export default function AnaEkran({ navigation, route }) {
             <Text style={styles.foodDetail}>100g İçin Temel Değer: {analizSonucu.karbonhidrat_miktari}g Karb.</Text>
             {analizSonucu.tahmini ? (
               <Text style={{ fontSize: 12, color: '#B71C1C', textAlign: 'center', marginTop: 8, fontWeight: 'bold' }}>
-                ⚠️ Bu değer yapay zekâ tahminidir. Lütfen kontrol edin; yanlışsa "Besin Değerini Manuel Gir" ile düzeltin.
+                ⚠️ Bu değer sistemin otomatik tahminidir. Lütfen kontrol edin; yanlışsa "Besin Değerini Manuel Gir" ile düzeltin.
               </Text>
             ) : null}
             <View style={styles.divider}></View>
