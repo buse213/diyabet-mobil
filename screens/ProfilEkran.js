@@ -16,6 +16,7 @@ export default function ProfilEkran({ navigation, route }) {
 
   const [icr, setIcr] = useState('');
   const [isf, setIsf] = useState('');
+  const [maxDoz, setMaxDoz] = useState(''); // Doz güvenlik sınırı (Ünite), boşsa varsayılan kullanılır
 
   useEffect(() => {
     const verileriYukle = async () => {
@@ -27,6 +28,7 @@ export default function ProfilEkran({ navigation, route }) {
         const kayitliYil = await AsyncStorage.getItem('kullanici_diyabetYili');
         const kayitliIcr = await AsyncStorage.getItem('hasta_icr');
         const kayitliIsf = await AsyncStorage.getItem('hasta_isf');
+        const kayitliMaxDoz = await AsyncStorage.getItem('hasta_max_doz');
 
         if (kayitliAd) setAdSoyad(kayitliAd);
         if (kayitliEmail) setEmail(kayitliEmail);
@@ -35,6 +37,7 @@ export default function ProfilEkran({ navigation, route }) {
         if (kayitliYil) setDiyabetYili(kayitliYil);
         setIcr(kayitliIcr ? kayitliIcr : '');
         setIsf(kayitliIsf ? kayitliIsf : '');
+        setMaxDoz(kayitliMaxDoz ? kayitliMaxDoz : '');
       } catch (error) {
         console.error("Profil verileri yüklenirken hata", error);
       }
@@ -45,6 +48,12 @@ export default function ProfilEkran({ navigation, route }) {
   const ayarlariKaydet = async () => {
     if (!adSoyad || !icr || !isf) {
       return Alert.alert("Eksik Bilgi", "Lütfen Ad Soyad, ICR ve ISF değerlerini doldurunuz.");
+    }
+
+    // Maksimum doz isteğe bağlıdır; girildiyse 0'dan büyük bir sayı olmalı (virgül de kabul edilir)
+    const maxDozSayi = parseFloat(String(maxDoz).replace(',', '.'));
+    if (maxDoz !== '' && (isNaN(maxDozSayi) || maxDozSayi <= 0)) {
+      return Alert.alert("Geçersiz Değer", "Maksimum doz, 0'dan büyük bir sayı olmalıdır (örn: 10).");
     }
 
     try {
@@ -67,6 +76,14 @@ export default function ProfilEkran({ navigation, route }) {
           await AsyncStorage.setItem('kullanici_diyabetYili', String(diyabetYili));
           await AsyncStorage.setItem('hasta_icr', String(icr));
           await AsyncStorage.setItem('hasta_isf', String(isf));
+
+          // Doz güvenlik sınırı sadece telefonda saklanır (boşsa varsayılan kullanılsın diye silinir)
+          if (maxDoz !== '') {
+            await AsyncStorage.setItem('hasta_max_doz', String(maxDozSayi));
+            setMaxDoz(String(maxDozSayi));
+          } else {
+            await AsyncStorage.removeItem('hasta_max_doz');
+          }
           
           Alert.alert("Başarılı", "Profil bilgileri başarıyla kaydedildi!", [
             {
@@ -153,6 +170,10 @@ export default function ProfilEkran({ navigation, route }) {
               <Text style={styles.clinicalValue}>{isf}</Text>
             </View>
           </View>
+          <View style={[styles.clinicalBox, { width: '100%', marginTop: 10 }]}>
+            <Text style={styles.clinicalLabel}>Maksimum Doz (Güvenlik Sınırı)</Text>
+            <Text style={styles.clinicalValue}>{maxDoz ? `${maxDoz} Ü` : 'Varsayılan (10 Ü)'}</Text>
+          </View>
         </View>
 
         <TouchableOpacity style={styles.editButton} onPress={() => setIsEditing(true)}>
@@ -213,6 +234,12 @@ export default function ProfilEkran({ navigation, route }) {
 
         <Text style={styles.label}>İnsülin Duyarlılık Faktörü (ISF):</Text>
         <TextInput style={styles.inputHighlight} placeholder="Örn: 50" keyboardType="numeric" value={isf} onChangeText={setIsf} />
+
+        <Text style={styles.label}>Maksimum Doz - Güvenlik Sınırı (Ünite):</Text>
+        <TextInput style={styles.inputHighlight} placeholder="Örn: 10" keyboardType="numeric" value={maxDoz} onChangeText={setMaxDoz} />
+        <Text style={styles.helperText}>
+          Önerilen doz bu değeri aşarsa uyarı gösterilir. Bu değeri doktorunuzla belirleyin. Boş bırakırsanız varsayılan 10 Ünite kullanılır.
+        </Text>
       </View>
 
       <TouchableOpacity style={styles.saveButton} onPress={ayarlariKaydet}>
@@ -246,6 +273,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   halfInputContainer: { width: '48%' },
   label: { fontSize: 14, fontWeight: 'bold', color: '#444', marginBottom: 8 },
+  helperText: { fontSize: 12, color: '#777', lineHeight: 17, marginTop: -5 },
   input: { backgroundColor: '#FBF8FD', borderWidth: 1, borderColor: '#CE93D8', borderRadius: 10, padding: 12, fontSize: 16, color: '#333', marginBottom: 15 },
   inputHighlight: { backgroundColor: '#F3E5F5', borderWidth: 1, borderColor: '#CE93D8', borderRadius: 10, padding: 12, fontSize: 16, color: '#4A148C', fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
   saveButton: { backgroundColor: '#8E24AA', paddingVertical: 15, borderRadius: 12, alignItems: 'center', marginTop: 10, elevation: 4 },

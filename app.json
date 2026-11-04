@@ -3,7 +3,8 @@
     "android": {
       "package": "com.busecam.diyabetmobil",
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "plugins": [
@@ -16,7 +17,8 @@
           "microphonePermission": "Sesli komutlar için mikrofon erişimi gerekiyor.",
           "speechRecognitionPermission": "Konuşmayı yazıya çevirmek için izin gerekiyor."
         }
-      ]
+      ],
+      "expo-notifications"
     ]
   }
 }

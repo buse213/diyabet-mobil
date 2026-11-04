@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, Image, ActivityIndicator, TextInput, Alert, ScrollView, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, Image, ActivityIndicator, TextInput, Alert, ScrollView, TouchableOpacity, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import axios from 'axios';
@@ -7,9 +7,22 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
+import * as Notifications from 'expo-notifications';
+
+// Bildirim Ayarları
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
 const AI_MODEL_URL = 'https://reporting-service-vsbz.onrender.com/insulin-tahmini'; 
+
+
+const VARSAYILAN_MAX_DOZ = 10;
 
 export default function AnaEkran({ navigation, route }) {
   const [image, setImage] = useState(null);
@@ -34,6 +47,7 @@ export default function AnaEkran({ navigation, route }) {
   
   const [hastaIcr, setHastaIcr] = useState(15);
   const [hastaIsf, setHastaIsf] = useState(50);
+  const [hastaMaxDoz, setHastaMaxDoz] = useState(VARSAYILAN_MAX_DOZ);
   const [kullaniciEmail, setKullaniciEmail] = useState('');
 
   const [isOffline, setIsOffline] = useState(false);
@@ -44,15 +58,40 @@ export default function AnaEkran({ navigation, route }) {
 
   const [isRecording, setIsRecording] = useState(false);
 
+  // Bildirim İzni İsteme ve Android Kanalı Oluşturma
+  useEffect(() => {
+    const bildirimIzniAl = async () => {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('Bildirim izni reddedildi!');
+      }
+
+      // Android cihazlar için zorunlu bildirim kanalı ayarı eklendi
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'Varsayılan',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#8E24AA',
+        });
+      }
+    };
+    bildirimIzniAl();
+  }, []);
+
   useFocusEffect(
     React.useCallback(() => {
       const ayarlariCek = async () => {
         const icr = await AsyncStorage.getItem('hasta_icr');
         const isf = await AsyncStorage.getItem('hasta_isf');
         const email = await AsyncStorage.getItem('hasta_email'); 
+        const maxDoz = await AsyncStorage.getItem('hasta_max_doz');
         if (icr) setHastaIcr(parseFloat(icr));
         if (isf) setHastaIsf(parseFloat(isf));
         if (email) setKullaniciEmail(email); 
+        // Profilde sınır girilmişse onu kullan, yoksa varsayılan
+        if (maxDoz && parseFloat(maxDoz) > 0) setHastaMaxDoz(parseFloat(maxDoz));
+        else setHastaMaxDoz(VARSAYILAN_MAX_DOZ);
       };
       ayarlariCek();
     }, [])
@@ -65,14 +104,13 @@ export default function AnaEkran({ navigation, route }) {
     return () => unsubscribe();
   }, []);
 
-  // Ses Tanıma Dinleyicileri (expo-speech-recognition)
+  // Ses Tanıma Dinleyicileri
   useSpeechRecognitionEvent('start', () => setIsRecording(true));
   useSpeechRecognitionEvent('end', () => setIsRecording(false));
   useSpeechRecognitionEvent('error', (e) => {
     console.log('Ses Tanıma Hatası:', e);
     setIsRecording(false);
     
-    // İngilizce ve teknik hatalar yerine Türkçe, anlaşılır mesajlar
     switch (e.error) {
       case 'no-speech':
         setStatus('Sesiniz algılanamadı, lütfen butona basıp tekrar konuşmayı deneyin.');
@@ -220,7 +258,7 @@ export default function AnaEkran({ navigation, route }) {
       if (response.data.durum === 'basarili' && response.data.sonuc) {
         const { turkce_isim, karbonhidrat_miktari } = response.data.sonuc;
         setStatus(`Analiz Tamamlandı!\nBulunan Yemek: ${turkce_isim}`);
-        setAnalizSonucu({ turkce_isim: turkce_isim, karbonhidrat_miktari: karbonhidrat_miktari });
+        setAnalizSonucu({ turkce_isim: turkce_isim, karbonhidrat_miktari: karbonhidrat_miktari, tahmini: response.data.kaynak === 'Gemini Bulut AI' });
       } else {
         setStatus('Yemek tespit edilemedi, lütfen manuel girmeyi deneyin.');
       }
@@ -232,7 +270,6 @@ export default function AnaEkran({ navigation, route }) {
     }
   };
 
-  // Tek dokunuşla çalışan sesli asistan fonksiyonu (expo-speech-recognition)
   const sesliAsistaniToggle = async () => {
     try {
       if (isRecording) {
@@ -249,7 +286,6 @@ export default function AnaEkran({ navigation, route }) {
       setStatus('Sizi dinliyorum... (Örn: "1 porsiyon makarna yedim")');
       const secenekler = { lang: 'tr-TR', interimResults: false };
       if (isOffline) {
-        // İnternet yokken telefonun içindeki çevrimdışı ses tanımayı kullan
         if (!ExpoSpeechRecognitionModule.supportsOnDeviceRecognition()) {
           setStatus('');
           return Alert.alert(
@@ -267,7 +303,6 @@ export default function AnaEkran({ navigation, route }) {
     }
   };
 
-  // Manuel giriş formunu yemek adı ve gramajla açar
   const manuelFormaAc = (isim, gram) => {
     setImage(null);
     setAnalizSonucu(null);
@@ -278,11 +313,9 @@ export default function AnaEkran({ navigation, route }) {
     setStatus('');
   };
 
-  // Sesli komut: internet varsa API ile otomatik, yoksa (veya başarısızsa) manuel form
   const sesliKomutuIsle = async (metin) => {
     let temiz = metin.toLocaleLowerCase('tr-TR');
 
-    // Gramaj: "200 gram", "150 gr", "100 g"
     let gram = null;
     const gramEsle = temiz.match(/(\d+)\s*(gram|gr|g)(\s|$)/);
     if (gramEsle) {
@@ -290,7 +323,6 @@ export default function AnaEkran({ navigation, route }) {
       temiz = temiz.replace(gramEsle[0], ' ');
     }
 
-    // Kalan sayıları ve gereksiz kelimeleri at
     temiz = temiz.replace(/\d+([.,]\d+)?/g, ' ');
     const gereksiz = ['gram', 'gr', 'porsiyon', 'tane', 'adet', 'dilim', 'bardak', 'kase', 'tabak',
       'yedim', 'yiyeceğim', 'yiyorum', 'içtim', 'içeceğim', 'içiyorum', 'ben', 'bir', 'biraz', 'şu', 'bugün', 'kadar'];
@@ -304,7 +336,6 @@ export default function AnaEkran({ navigation, route }) {
       return;
     }
 
-    // İnternet yoksa doğrudan uyarı verip manuel forma geç
     if (isOffline) {
       Alert.alert(
         "Çevrimdışı Mod", 
@@ -314,11 +345,10 @@ export default function AnaEkran({ navigation, route }) {
       return;
     }
 
-    // İnternet varsa besin değerini iste
     setStatus(`Algılanan: "${metin}"\nBesin değerleri hesaplanıyor...`);
     setLoading(true);
     try {
-      const response = await axios.post(`${BACKEND_URL}/sesli-analiz`, { komut: metin }, { timeout: 60000 });
+      const response = await axios.post(`${BACKEND_URL}/sesli-analiz`, { komut: metin });
       const sonuc = response.data && response.data.sonuc;
       const karb = sonuc ? parseFloat(sonuc.karbonhidrat_miktari) : NaN;
 
@@ -326,7 +356,6 @@ export default function AnaEkran({ navigation, route }) {
         setImage(null);
         setManuelMod(false);
         setAnalizSonucu({ turkce_isim: sonuc.turkce_isim, karbonhidrat_miktari: karb, tahmini: true });
-        // Kullanıcı gramaj söylediyse onu kullan, yoksa tahmini porsiyon
         setGramaj(gram ? gram : (sonuc.tahmini_gramaj ? String(sonuc.tahmini_gramaj) : '100'));
         setStatus('');
         return;
@@ -337,7 +366,6 @@ export default function AnaEkran({ navigation, route }) {
       setLoading(false);
     }
 
-    // Otomatik bulunamadıysa manuel forma düş
     Alert.alert("Besin Değeri Bulunamadı", "Karbonhidrat değeri otomatik bulunamadı. Lütfen 100 gramındaki karbonhidratı manuel girin.");
     manuelFormaAc(isim, gram);
   };
@@ -368,7 +396,28 @@ export default function AnaEkran({ navigation, route }) {
             kayitListesi.push(payload);
             await AsyncStorage.setItem('offline_kayitlar', JSON.stringify(kayitListesi));
             
-            Alert.alert("Kayıt Başarılı", "İnternet bağlantınız olmadığı için verileriniz telefonunuza kaydedildi. İnternet geldiğinde otomatik olarak güncellenecektir.");
+            Alert.alert("Kayıt Başarılı", "İnternet bağlantınız olmadığı için verileriniz telefonunuza kaydedildi. 2 saat sonra tokluk şekerinizi ölçmeniz için bildirim alacaksınız.");
+            
+            // Gerçek 2 Saatlik Bildirim Kurulumu
+            try {
+              await Notifications.scheduleNotificationAsync({
+                content: {
+                  title: "Tokluk Şekeri Ölçüm Vakti 🩸",
+                  body: `${analizSonucu.turkce_isim} yiyeli 2 saat oldu. Lütfen tokluk kan şekerinizi ölçmeyi unutmayın!`,
+                  sound: true,
+                  priority: Notifications.AndroidNotificationPriority.HIGH,
+                },
+                trigger: { 
+                  type: 'timeInterval',
+                  seconds: 2 * 60 * 60, // TAM 2 SAAT (7200 SANİYE)
+                  repeats: false,
+                  channelId: 'default' 
+                },
+              });
+            } catch (err) { 
+              console.log("Bildirim kurulamadı: ", String(err)); 
+            }
+
             setAnalizSonucu(null); setImage(null); setStatus('');
         } catch (error) {
             Alert.alert("Hata", "Kayıt işlemi sırasında bir sorun oluştu.");
@@ -377,7 +426,28 @@ export default function AnaEkran({ navigation, route }) {
         try {
             const response = await axios.post(`${BACKEND_URL}/kaydet`, payload);
             if (response.data.durum === 'basarili') {
-                Alert.alert("Kayıt Başarılı", "Sağlık verileriniz geçmişe başarıyla eklendi.");
+                Alert.alert("Kayıt Başarılı", "Sağlık verileriniz geçmişe eklendi. 2 saat sonra tokluk şekerinizi ölçmeniz için bildirim alacaksınız.");
+                
+                // Gerçek 2 Saatlik Bildirim Kurulumu
+                try {
+                  await Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: "Tokluk Şekeri Ölçüm Vakti 🩸",
+                      body: `${analizSonucu.turkce_isim} yiyeli 2 saat oldu. Lütfen tokluk kan şekerinizi ölçmeyi unutmayın!`,
+                      sound: true,
+                      priority: Notifications.AndroidNotificationPriority.HIGH,
+                    },
+                    trigger: { 
+                      type: 'timeInterval',
+                      seconds: 2 * 60 * 60, // TAM 2 SAAT (7200 SANİYE)
+                      repeats: false,
+                      channelId: 'default' 
+                    },
+                  });
+                } catch (err) { 
+                  console.log("Bildirim kurulamadı: ", String(err)); 
+                }
+
                 setAnalizSonucu(null); setImage(null); setStatus('');
             }
         } catch (error) { 
@@ -385,6 +455,9 @@ export default function AnaEkran({ navigation, route }) {
         }
     }
   };
+
+  // Önerilen doz güvenlik sınırını aşıyor mu?
+  const dozAsiyor = parseFloat(toplamOnerilenInsulin) > hastaMaxDoz;
 
   return (
     <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -405,7 +478,6 @@ export default function AnaEkran({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        {/* Tek Dokunuşlu Sesli Asistan Butonu */}
         <TouchableOpacity 
           style={[styles.manualBtn, { marginBottom: 10 }, isRecording && { borderColor: '#D32F2F', backgroundColor: '#FFEBEE' }]} 
           onPress={sesliAsistaniToggle}
@@ -448,13 +520,29 @@ export default function AnaEkran({ navigation, route }) {
               <Text style={styles.analyzeBtnText}>Besin Değerini Bul</Text>
             </TouchableOpacity>
           )}
-          {loading && <ActivityIndicator size="large" color="#8E24AA" style={{marginTop: 20}} />}
+          {loading && (
+            <View style={{ alignItems: 'center', marginTop: 20 }}>
+              <ActivityIndicator size="large" color="#8E24AA" />
+              <Text style={{ marginTop: 10, fontSize: 12, color: '#777', textAlign: 'center' }}>
+                İşlem yapılıyor, lütfen bekleyin...
+              </Text>
+            </View>
+          )}
         </View>
       )}
 
       {!image && !manuelMod && !analizSonucu && status ? (
         <Text style={styles.statusText}>{status}</Text>
       ) : null}
+
+      {loading && !image && !manuelMod && !analizSonucu && (
+        <View style={{ alignItems: 'center', marginTop: 15, marginBottom: 10 }}>
+          <ActivityIndicator size="large" color="#8E24AA" />
+          <Text style={{ marginTop: 10, fontSize: 12, color: '#777', textAlign: 'center' }}>
+             İşlem yapılıyor, lütfen bekleyin...
+          </Text>
+        </View>
+      )}
 
       {manuelMod && (
         <View style={styles.manuelCard}>
@@ -543,9 +631,16 @@ export default function AnaEkran({ navigation, route }) {
                 <Text style={styles.insulinLabel}>
                   {yapayZekaKullanildi ? "Akıllı Analizle Önerilen Doz" : "Klasik Hesaplanmış Doz"}
                 </Text>
-                <Text style={[styles.insulinValue, yapayZekaKullanildi && {color: '#311B92'}]}>
+                <Text style={[styles.insulinValue, yapayZekaKullanildi && {color: '#311B92'}, dozAsiyor && {color: '#D32F2F'}]}>
                   {toplamOnerilenInsulin} Ünite
                 </Text>
+                {dozAsiyor ? (
+                  <View style={{ marginTop: 12, padding: 10, backgroundColor: '#FFEBEE', borderRadius: 8, borderWidth: 1, borderColor: '#D32F2F' }}>
+                    <Text style={{ color: '#B71C1C', fontSize: 13, fontWeight: 'bold', textAlign: 'center', lineHeight: 18 }}>
+                      ⚠️ Önerilen doz güvenlik sınırınızı ({hastaMaxDoz} Ünite) aşıyor. Doz almadan önce girdiğiniz değerleri (gramaj, karbonhidrat, kan şekeri) kontrol edin ve mutlaka doktorunuza danışın.
+                    </Text>
+                  </View>
+                ) : null}
             </View>
 
             <TouchableOpacity 
