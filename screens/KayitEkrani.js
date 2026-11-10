@@ -18,6 +18,24 @@ export default function KayitEkrani({ navigation }) {
             return;
         }
 
+        // === YENİ EKLENEN ŞİFRE UZUNLUK KONTROLLERİ ===
+        if (sifre.length < 6) {
+            Alert.alert(
+                "Şifre Çok Kısa 🔒", 
+                "Güvenliğiniz için şifreniz en az 6 karakterden oluşmalıdır. Lütfen şifrenizi uzatın."
+            );
+            return; // İşlemi durdur, sunucuya istek atma
+        }
+        
+        if (sifre.length > 50) {
+            Alert.alert(
+                "Şifre Çok Uzun 🔒", 
+                "Şifreniz en fazla 50 karakter olabilir."
+            );
+            return; // İşlemi durdur
+        }
+        // ===============================================
+
         try {
             const response = await axios.post(`${API_URL}/kayit`, { ad, email, sifre });
 
