@@ -18,13 +18,13 @@ export default function KayitEkrani({ navigation }) {
             return;
         }
 
-        // === YENİ EKLENEN ŞİFRE UZUNLUK KONTROLLERİ ===
+        // === ŞİFRE UZUNLUK KONTROLLERİ ===
         if (sifre.length < 6) {
             Alert.alert(
                 "Şifre Çok Kısa 🔒", 
                 "Güvenliğiniz için şifreniz en az 6 karakterden oluşmalıdır. Lütfen şifrenizi uzatın."
             );
-            return; // İşlemi durdur, sunucuya istek atma
+            return; 
         }
         
         if (sifre.length > 50) {
@@ -32,9 +32,8 @@ export default function KayitEkrani({ navigation }) {
                 "Şifre Çok Uzun 🔒", 
                 "Şifreniz en fazla 50 karakter olabilir."
             );
-            return; // İşlemi durdur
+            return; 
         }
-        // ===============================================
 
         try {
             const response = await axios.post(`${API_URL}/kayit`, { ad, email, sifre });
@@ -54,8 +53,12 @@ export default function KayitEkrani({ navigation }) {
                 Alert.alert('Hata', response.data.mesaj);
             }
         } catch (error) {
-            // GERÇEK HATAYI YAKALAMA (Hata Ayıklama İçin)
-            Alert.alert('Gerçek Hata!', error.message);
+            // === KULLANICI DOSTU HATA MESAJLARI (Aynı e-posta vb.) ===
+            if (error.response && error.response.data && error.response.data.mesaj) {
+                Alert.alert('Kayıt Başarısız ❌', error.response.data.mesaj);
+            } else {
+                Alert.alert('Bağlantı Hatası ⚠️', 'Sunucuya ulaşılamıyor. Lütfen internet bağlantınızı kontrol edip tekrar deneyin.');
+            }
         }
     };
 
