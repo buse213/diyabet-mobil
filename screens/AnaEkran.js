@@ -21,7 +21,6 @@ Notifications.setNotificationHandler({
 const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
 const AI_MODEL_URL = 'https://reporting-service-vsbz.onrender.com/insulin-tahmini'; 
 
-
 const VARSAYILAN_MAX_DOZ = 10;
 
 export default function AnaEkran({ navigation, route }) {
@@ -58,6 +57,20 @@ export default function AnaEkran({ navigation, route }) {
 
   const [isRecording, setIsRecording] = useState(false);
 
+  // Arka Planda Sessiz Sunucu Uyandırma (Kullanıcıya görünmez)
+  useEffect(() => {
+    const sunuculariUyandir = async () => {
+      try {
+        axios.get(BACKEND_URL, { timeout: 60000 }).catch(() => {});
+        axios.get('https://reporting-service-vsbz.onrender.com', { timeout: 60000 }).catch(() => {});
+        axios.get('https://lstm-api-service.onrender.com', { timeout: 60000 }).catch(() => {});
+      } catch (e) {
+        // Sessiz arka plan isteği
+      }
+    };
+    sunuculariUyandir();
+  }, []);
+
   // Bildirim İzni İsteme ve Android Kanalı Oluşturma
   useEffect(() => {
     const bildirimIzniAl = async () => {
@@ -66,7 +79,6 @@ export default function AnaEkran({ navigation, route }) {
         console.log('Bildirim izni reddedildi!');
       }
 
-      // Android cihazlar için zorunlu bildirim kanalı ayarı eklendi
       if (Platform.OS === 'android') {
         await Notifications.setNotificationChannelAsync('default', {
           name: 'Varsayılan',
@@ -89,7 +101,6 @@ export default function AnaEkran({ navigation, route }) {
         if (icr) setHastaIcr(parseFloat(icr));
         if (isf) setHastaIsf(parseFloat(isf));
         if (email) setKullaniciEmail(email); 
-        // Profilde sınır girilmişse onu kullan, yoksa varsayılan
         if (maxDoz && parseFloat(maxDoz) > 0) setHastaMaxDoz(parseFloat(maxDoz));
         else setHastaMaxDoz(VARSAYILAN_MAX_DOZ);
       };
@@ -213,10 +224,11 @@ export default function AnaEkran({ navigation, route }) {
     }
   };
 
+  // Fotoğraf Sıkıştırma (quality: 0.4 ile hızlı yükleme)
   const openCamera = async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) return Alert.alert("İzin Gerekli", "Kamerayı kullanabilmek için izin vermelisiniz.");
-    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.8 });
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.4 });
     if (!result.canceled) {
       setImage(result.assets[0].uri); setStatus('Fotoğraf çekildi, analize hazır.');
       setAnalizSonucu(null); setManuelMod(false);
@@ -226,7 +238,7 @@ export default function AnaEkran({ navigation, route }) {
   const openGallery = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return Alert.alert("İzin Gerekli", "Galeriye erişebilmek için izin vermelisiniz.");
-    const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.8 });
+    const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.4 });
     if (!result.canceled) {
       setImage(result.assets[0].uri); setStatus('Fotoğraf seçildi, analize hazır.');
       setAnalizSonucu(null); setManuelMod(false);
@@ -398,7 +410,6 @@ export default function AnaEkran({ navigation, route }) {
             
             Alert.alert("Kayıt Başarılı", "İnternet bağlantınız olmadığı için verileriniz telefonunuza kaydedildi. 2 saat sonra tokluk şekerinizi ölçmeniz için bildirim alacaksınız.");
             
-            // Gerçek 2 Saatlik Bildirim Kurulumu
             try {
               await Notifications.scheduleNotificationAsync({
                 content: {
@@ -409,7 +420,7 @@ export default function AnaEkran({ navigation, route }) {
                 },
                 trigger: { 
                   type: 'timeInterval',
-                  seconds: 2 * 60 * 60, // TAM 2 SAAT (7200 SANİYE)
+                  seconds: 2 * 60 * 60,
                   repeats: false,
                   channelId: 'default' 
                 },
@@ -428,7 +439,6 @@ export default function AnaEkran({ navigation, route }) {
             if (response.data.durum === 'basarili') {
                 Alert.alert("Kayıt Başarılı", "Sağlık verileriniz geçmişe eklendi. 2 saat sonra tokluk şekerinizi ölçmeniz için bildirim alacaksınız.");
                 
-                // Gerçek 2 Saatlik Bildirim Kurulumu
                 try {
                   await Notifications.scheduleNotificationAsync({
                     content: {
@@ -439,7 +449,7 @@ export default function AnaEkran({ navigation, route }) {
                     },
                     trigger: { 
                       type: 'timeInterval',
-                      seconds: 2 * 60 * 60, // TAM 2 SAAT (7200 SANİYE)
+                      seconds: 2 * 60 * 60,
                       repeats: false,
                       channelId: 'default' 
                     },
@@ -456,7 +466,6 @@ export default function AnaEkran({ navigation, route }) {
     }
   };
 
-  // Önerilen doz güvenlik sınırını aşıyor mu?
   const dozAsiyor = parseFloat(toplamOnerilenInsulin) > hastaMaxDoz;
 
   return (
