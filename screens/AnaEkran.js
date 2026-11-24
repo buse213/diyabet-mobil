@@ -19,7 +19,7 @@ Notifications.setNotificationHandler({
 });
 
 const BACKEND_URL = 'https://api-gateway-gq75.onrender.com';
-const AI_MODEL_URL = 'https://reporting-service-vsbz.onrender.com/insulin-tahmini'; 
+const AI_MODEL_URL = 'https://api-gateway-gq75.onrender.com/insulin-tahmini'; 
 
 const VARSAYILAN_MAX_DOZ = 10;
 

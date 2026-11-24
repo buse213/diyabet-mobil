@@ -21,7 +21,7 @@ const InsulinTahminEkrani = () => {
 
     setYukleniyor(true);
     try {
-      const response = await fetch('https://reporting-service-vsbz.onrender.com/insulin-tahmini', {
+      const response = await fetch('https://api-gateway-gq75.onrender.com/insulin-tahmini', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
